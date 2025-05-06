@@ -1,0 +1,32 @@
+server:
+  port: 8081
+  host: "0.0.0.0"
+  read_timeout: 15
+  write_timeout: 15
+
+mongodb:
+  uri: "mongodb://mongodb:27017"
+  database: "kekopoly"
+  games_collection: "games"
+  player_collection: "players"
+  property_collection: "properties"
+  card_collection: "cards"
+  transaction_collection: "transactions"
+
+redis:
+  uri: "redis:6379"
+  password: ""
+  db: 0
+
+jwt:
+  secret: "$0lana$$$$123456"
+  expiration: 24
+
+game:
+  disconnection_timeout: 180
+  max_players: 6
+  initial_balance: 1500
+  turn_timeout: 120
+  card_deck_size: 16
+  minimum_players_to_start: 2
+  idle_game_expiry: 24

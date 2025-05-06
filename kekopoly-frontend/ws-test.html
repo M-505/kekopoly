@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kekopoly WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        h1, h2 {
+            color: #2c3e50;
+        }
+        
+        #connection-status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .connecting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background-color: #0069d9;
+        }
+        
+        input, select {
+            padding: 8px;
+            margin-right: 10px;
+            border-radius: 5px;
+            border: 1px solid #ced4da;
+        }
+        
+        .action-group {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+        }
+        
+        #logs {
+            height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Kekopoly WebSocket Test</h1>
+    
+    <div id="connection-status" class="disconnected">
+        Disconnected
+    </div>
+    
+    <div class="action-group">
+        <h2>Connection</h2>
+        <input type="text" id="game-id" placeholder="Game ID" value="test-game-123">
+        <input type="text" id="player-id" placeholder="Player ID" value="player-1">
+        <button id="connect-btn">Connect</button>
+        <button id="disconnect-btn">Disconnect</button>
+    </div>
+    
+    <div class="action-group">
+        <h2>Game Actions</h2>
+        <button id="roll-dice-btn">Roll Dice</button>
+        <button id="end-turn-btn">End Turn</button>
+        
+        <div style="margin-top: 10px;">
+            <input type="text" id="property-id" placeholder="Property ID" value="property-1">
+            <button id="buy-property-btn">Buy Property</button>
+        </div>
+        
+        <div style="margin-top: 10px;">
+            <select id="card-type">
+                <option value="MEME">Meme Card</option>
+                <option value="REDPILL">Redpill Card</option>
+                <option value="EEGI">EEGI Card</option>
+            </select>
+            <button id="draw-card-btn">Draw Card</button>
+        </div>
+    </div>
+    
+    <h2>WebSocket Logs</h2>
+    <div id="logs">
+        <pre id="log-content"></pre>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const rollDiceBtn = document.getElementById('roll-dice-btn');
+        const endTurnBtn = document.getElementById('end-turn-btn');
+        const buyPropertyBtn = document.getElementById('buy-property-btn');
+        const drawCardBtn = document.getElementById('draw-card-btn');
+        const connectionStatus = document.getElementById('connection-status');
+        const logContent = document.getElementById('log-content');
+        const gameIdInput = document.getElementById('game-id');
+        const playerIdInput = document.getElementById('player-id');
+        const propertyIdInput = document.getElementById('property-id');
+        const cardTypeSelect = document.getElementById('card-type');
+        
+        // WebSocket variables
+        let socket = null;
+        let gameId = null;
+        let playerId = null;
+        
+        // Logging function
+        function log(message, data = null) {
+            const timestamp = new Date().toISOString();
+            let logMessage = `${timestamp} - ${message}`;
+            
+            if (data) {
+                if (typeof data === 'object') {
+                    logMessage += `\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    logMessage += `\n${data}`;
+                }
+            }
+            
+            logContent.textContent = logMessage + '\n\n' + logContent.textContent;
+        }
+        
+        // Update connection status
+        function updateConnectionStatus(status) {
+            connectionStatus.className = status;
+            connectionStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+        
+        // Connect to WebSocket
+        function connect() {
+            if (socket) {
+                log('Already connected, disconnecting first');
+                socket.close();
+            }
+            
+            gameId = gameIdInput.value;
+            playerId = playerIdInput.value;
+            
+            if (!gameId || !playerId) {
+                log('Error: Game ID and Player ID are required');
+                return;
+            }
+            
+            const sessionId = Math.random().toString(36).substring(2, 15);
+            const wsUrl = `ws://localhost:8080/ws/${gameId}?sessionId=${sessionId}&playerId=${playerId}`;
+            
+            log(`Connecting to ${wsUrl}`);
+            updateConnectionStatus('connecting');
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                log('WebSocket connection established');
+                updateConnectionStatus('connected');
+            };
+            
+            socket.onclose = (event) => {
+                log(`WebSocket connection closed: ${event.reason || 'No reason provided'}`);
+                updateConnectionStatus('disconnected');
+            };
+            
+            socket.onerror = (error) => {
+                log('WebSocket error occurred', error);
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log('Received message', data);
+                } catch (error) {
+                    log('Error parsing message', event.data);
+                }
+            };
+        }
+        
+        // Disconnect from WebSocket
+        function disconnect() {
+            if (!socket) {
+                log('Not connected');
+                return;
+            }
+            
+            socket.close();
+            socket = null;
+            updateConnectionStatus('disconnected');
+            log('Disconnected from WebSocket');
+        }
+        
+        // Send message to server
+        function sendMessage(type, payload = {}) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                log('Cannot send message: WebSocket is not connected');
+                return;
+            }
+            
+            const message = JSON.stringify({
+                type,
+                ...payload,
+                gameId,
+                playerId
+            });
+            
+            socket.send(message);
+            log(`Sent ${type} message`, payload);
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        
+        rollDiceBtn.addEventListener('click', () => {
+            sendMessage('roll_dice');
+        });
+        
+        endTurnBtn.addEventListener('click', () => {
+            sendMessage('end_turn');
+        });
+        
+        buyPropertyBtn.addEventListener('click', () => {
+            const propertyId = propertyIdInput.value;
+            if (!propertyId) {
+                log('Error: Property ID is required');
+                return;
+            }
+            sendMessage('buy_property', { propertyId });
+        });
+        
+        drawCardBtn.addEventListener('click', () => {
+            const cardType = cardTypeSelect.value;
+            sendMessage('draw_card', { cardType });
+        });
+        
+        // Initialize with disconnected status
+        updateConnectionStatus('disconnected');
+        log('WebSocket tester initialized. Click "Connect" to start.');
+    </script>
+</body>
+</html>

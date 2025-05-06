@@ -1,0 +1,40 @@
+# Example configuration file for Kekopoly Backend
+# Copy this file to config.yaml for local development
+
+server:
+  port: 8080
+  host: "0.0.0.0"
+  read_timeout: 15  # seconds
+  write_timeout: 15 # seconds
+
+mongodb:
+  uri: "mongodb://localhost:27017"
+  database: "kekopoly"
+  games_collection: "games"
+  player_collection: "players"
+  property_collection: "properties"
+  card_collection: "cards"
+  transaction_collection: "transactions"
+
+redis:
+  uri: "localhost:6379"
+  password: ""
+  db: 0
+
+jwt:
+  secret: "Change-this-to-a-secure-secret-in-production!"
+  expiration: 24 # hours
+
+game:
+  disconnection_timeout: 180 # 3 minutes
+  max_players: 6
+  initial_balance: 1500
+  turn_timeout: 120 # seconds
+  card_deck_size: 16
+  minimum_players_to_start: 2
+  idle_game_expiry: 24 # hours
+
+solana:
+  rpc_url: "https://api.mainnet-beta.solana.com"
+  network: "mainnet"
+  dev_mode: true # Set to false in production to enforce signature verification 

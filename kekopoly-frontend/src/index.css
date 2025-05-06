@@ -1,0 +1,46 @@
+:root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Kekopoly Theme Colors */
+.kekopoly-green {
+  color: #5cb030;
+}
+
+.kekopoly-red {
+  color: #c25a3a;
+}
+
+.kekopoly-blue {
+  color: #3a90c2;
+}
+
+.kekopoly-bg {
+  background-color: #f6f2e4;
+}

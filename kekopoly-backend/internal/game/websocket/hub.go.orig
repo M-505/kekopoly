@@ -1,0 +1,658 @@
+package websocket
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.uber.org/zap"
+
+	"github.com/kekopoly/backend/internal/game/manager"
+)
+
+// Hub maintains the set of active WebSocket connections and broadcasts messages
+type Hub struct {
+	// Game manager reference
+	gameManager *manager.GameManager
+
+	// Registered clients by gameID -> playerID -> client
+	clients map[string]map[string]*Client
+
+	// Mutex for clients map
+	clientsMutex sync.RWMutex
+
+	// Register requests from clients
+	register chan *Client
+
+	// Unregister requests from clients
+	unregister chan *Client
+
+	// Broadcast messages to all clients in a game
+	broadcast chan *BroadcastMessage
+
+	// Context for cleanup
+	ctx context.Context
+
+	// Logger
+	logger *zap.SugaredLogger
+
+	// MongoDB client
+	mongoClient *mongo.Client
+
+	// Redis client
+	redisClient *redis.Client
+
+	// Store player information by gameID -> playerID -> playerInfo
+	playerInfo map[string]map[string]map[string]interface{}
+
+	// Mutex for playerInfo map
+	playerInfoMutex sync.RWMutex
+}
+
+// Client represents a WebSocket client connection
+type Client struct {
+	// Hub reference
+	hub *Hub
+
+	// WebSocket connection
+	conn *websocket.Conn
+
+	// Buffered channel of outbound messages
+	send chan []byte
+
+	// Player ID
+	playerID string
+
+	// Game ID
+	gameID string
+
+	// Session ID
+	sessionID string
+
+	// Last time a pong was received from this client
+	lastPongTime time.Time
+
+	// Mutex for protecting lastPongTime
+	pongMutex sync.RWMutex
+}
+
+// BroadcastMessage represents a message to be broadcast to clients
+type BroadcastMessage struct {
+	// Game ID to broadcast to
+	gameID string
+
+	// Message data
+	data []byte
+
+	// Optional player ID to exclude from broadcast
+	excludePlayerID string
+}
+
+// NewHub creates a new WebSocket hub
+func NewHub(ctx context.Context, gameManager *manager.GameManager, mongoClient *mongo.Client, redisClient *redis.Client, logger *zap.SugaredLogger) *Hub {
+	return &Hub{
+		gameManager:     gameManager,
+		clients:         make(map[string]map[string]*Client),
+		clientsMutex:    sync.RWMutex{},
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
+		broadcast:       make(chan *BroadcastMessage),
+		ctx:             ctx,
+		logger:          logger,
+		mongoClient:     mongoClient,
+		redisClient:     redisClient,
+		playerInfo:      make(map[string]map[string]map[string]interface{}),
+		playerInfoMutex: sync.RWMutex{},
+	}
+}
+
+// getPlayerInfo retrieves stored player information for a specific player in a game
+func (h *Hub) getPlayerInfo(gameID, playerID string) map[string]interface{} {
+	h.playerInfoMutex.RLock()
+	defer h.playerInfoMutex.RUnlock()
+
+	if gameInfo, ok := h.playerInfo[gameID]; ok {
+		if playerInfo, ok := gameInfo[playerID]; ok {
+			return playerInfo
+		}
+	}
+
+	return nil
+}
+
+// storePlayerInfo stores player information for a specific player in a game
+func (h *Hub) storePlayerInfo(gameID, playerID string, info map[string]interface{}) {
+	h.playerInfoMutex.Lock()
+	defer h.playerInfoMutex.Unlock()
+
+	// Initialize game map if it doesn't exist
+	if _, ok := h.playerInfo[gameID]; !ok {
+		h.playerInfo[gameID] = make(map[string]map[string]interface{})
+	}
+
+	// Store player info
+	h.playerInfo[gameID][playerID] = info
+	h.logger.Infof("Stored player info for player %s in game %s", playerID, gameID)
+}
+
+// CheckInactiveClients checks for inactive clients and unregisters them
+// This should be called periodically to clean up inactive connections
+func (h *Hub) CheckInactiveClients(inactivityThreshold time.Duration) {
+	h.clientsMutex.Lock()
+	defer h.clientsMutex.Unlock()
+
+	inactiveClients := []*Client{}
+
+	// Find all inactive clients
+	for gameID, gamePlayers := range h.clients {
+		for playerID, client := range gamePlayers {
+			if !client.isActive(inactivityThreshold) {
+				h.logger.Infof("Detected inactive client: Game ID: %s, Player ID: %s", gameID, playerID)
+				inactiveClients = append(inactiveClients, client)
+			}
+		}
+	}
+
+	// Unregister inactive clients outside the loop to avoid modifying the map during iteration
+	for _, client := range inactiveClients {
+		// Use a goroutine to avoid blocking
+		go func(c *Client) {
+			h.unregister <- c
+		}(client)
+	}
+
+	if len(inactiveClients) > 0 {
+		h.logger.Infof("Unregistered %d inactive clients", len(inactiveClients))
+	}
+}
+
+// Run starts the WebSocket hub
+func (h *Hub) Run() {
+	// Create a ticker to periodically check for inactive clients
+	inactivityCheckTicker := time.NewTicker(30 * time.Second)
+	defer inactivityCheckTicker.Stop()
+
+	for {
+		select {
+		case <-inactivityCheckTicker.C:
+			// Check for inactive clients every 30 seconds
+			// Consider a client inactive if no pong received for 90 seconds
+			h.CheckInactiveClients(90 * time.Second)
+
+		case <-h.ctx.Done():
+			// Shutdown all clients
+			h.clientsMutex.Lock()
+			for gameID, gamePlayers := range h.clients {
+				for playerID, client := range gamePlayers {
+					// Close the WebSocket connection properly
+					client.conn.Close()
+					delete(h.clients[gameID], playerID)
+				}
+				delete(h.clients, gameID)
+			}
+			h.clientsMutex.Unlock()
+			return
+
+		case client := <-h.register:
+			h.clientsMutex.Lock()
+			if _, ok := h.clients[client.gameID]; !ok {
+				h.clients[client.gameID] = make(map[string]*Client)
+			}
+
+			// If a client for this player already exists, close it and replace
+			if existingClient, ok := h.clients[client.gameID][client.playerID]; ok {
+				h.logger.Infof("Replacing existing client for Player ID: %s in Game ID: %s", client.playerID, client.gameID)
+
+				// Send close message to the existing client - do this safely to avoid panics
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							h.logger.Warnf("Recovered from panic while closing existing client connection: %v", r)
+						}
+					}()
+					existingClient.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				}()
+
+				// Force close the connection - also safely
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							h.logger.Warnf("Recovered from panic while closing existing client conn: %v", r)
+						}
+					}()
+					existingClient.conn.Close()
+				}()
+
+				// Close the send channel - safely
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							h.logger.Warnf("Recovered from panic while closing existing client channel: %v", r)
+						}
+					}()
+					// Only close if not nil and not already closed (can't check directly in Go)
+					select {
+					case _, ok := <-existingClient.send:
+						if ok {
+							close(existingClient.send)
+						}
+					default:
+						close(existingClient.send)
+					}
+				}()
+			}
+
+			// Register the new client
+			h.clients[client.gameID][client.playerID] = client
+			h.clientsMutex.Unlock()
+
+			h.logger.Infof("Client registered: Game ID: %s, Player ID: %s", client.gameID, client.playerID)
+
+		case client := <-h.unregister:
+			h.clientsMutex.Lock()
+			if _, ok := h.clients[client.gameID]; ok {
+				if clientObj, ok := h.clients[client.gameID][client.playerID]; ok {
+					// Only close the channel if it's the same client instance
+					// This prevents closing an already closed channel when a new
+					// connection for the same player/game has been established
+					if clientObj == client {
+						// Safely close the send channel
+						// Use a recover in a separate goroutine to catch any panics from closing already closed channels
+						func() {
+							defer func() {
+								if r := recover(); r != nil {
+									h.logger.Warnf("Recovered from panic while closing client channel: %v", r)
+								}
+							}()
+							close(client.send)
+						}()
+
+						delete(h.clients[client.gameID], client.playerID)
+
+						// If no more clients in this game, remove the game entry
+						if len(h.clients[client.gameID]) == 0 {
+							delete(h.clients, client.gameID)
+						}
+
+						h.logger.Infof("Client unregistered: Game ID: %s, Player ID: %s", client.gameID, client.playerID)
+
+						// Notify game manager about disconnection
+						go h.gameManager.PlayerDisconnected(client.gameID, client.sessionID)
+					} else {
+						h.logger.Infof("Ignoring unregister for outdated client: Game ID: %s, Player ID: %s", client.gameID, client.playerID)
+					}
+				}
+			}
+			h.clientsMutex.Unlock()
+
+		case message := <-h.broadcast:
+			h.clientsMutex.RLock()
+			if gamePlayers, ok := h.clients[message.gameID]; ok {
+				for playerID, client := range gamePlayers {
+					// Don't send to excluded player
+					if message.excludePlayerID != "" && playerID == message.excludePlayerID {
+						continue
+					}
+
+					// Safely send message
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								h.logger.Warnf("Recovered from panic during broadcast to client: %v", r)
+								// If we panic during send, it likely means client channel is closed
+								// We'll clean up this client on the next iteration
+							}
+						}()
+
+						select {
+						case client.send <- message.data:
+							// Message sent successfully
+						default:
+							// If the client's send buffer is full, assume it's stuck or slow
+							// Queue cleanup for this client
+							h.logger.Warnf("Client dropped due to full buffer: Game ID: %s, Player ID: %s", client.gameID, client.playerID)
+							go func() {
+								h.unregister <- client
+							}()
+						}
+					}()
+				}
+			}
+			h.clientsMutex.RUnlock()
+		}
+	}
+}
+
+// BroadcastToGame sends a message to all clients in a game
+func (h *Hub) BroadcastToGame(gameID string, message []byte) {
+	h.broadcast <- &BroadcastMessage{
+		gameID: gameID,
+		data:   message,
+	}
+}
+
+// BroadcastToGameExcept sends a message to all clients in a game except one
+func (h *Hub) BroadcastToGameExcept(gameID string, message []byte, excludePlayerID string) {
+	h.broadcast <- &BroadcastMessage{
+		gameID:          gameID,
+		data:            message,
+		excludePlayerID: excludePlayerID,
+	}
+}
+
+// SendToPlayer sends a message to a specific player in a game
+func (h *Hub) SendToPlayer(gameID, playerID string, message []byte) bool {
+	h.clientsMutex.RLock()
+	defer h.clientsMutex.RUnlock()
+
+	if gamePlayers, ok := h.clients[gameID]; ok {
+		if client, ok := gamePlayers[playerID]; ok {
+			select {
+			case client.send <- message:
+				return true
+			default:
+				// If the client's send buffer is full, assume it's stuck or slow
+				h.logger.Warnf("Failed to send to client (buffer full): Game ID: %s, Player ID: %s", gameID, playerID)
+				return false
+			}
+		}
+	}
+
+	return false
+}
+
+// HandleWebSocketConnection handles a WebSocket connection
+func (h *Hub) HandleWebSocketConnection(conn *websocket.Conn, gameID, playerID, sessionID string) {
+	client := &Client{
+		hub:       h,
+		conn:      conn,
+		send:      make(chan []byte, 256), // Buffer size can be adjusted based on expected message volume
+		playerID:  playerID,
+		gameID:    gameID,
+		sessionID: sessionID,
+	}
+
+	// Register client
+	h.register <- client
+
+	// Start goroutines for reading and writing
+	go client.readPump()
+	go client.writePump()
+
+	// After a client connects, broadcast the current player list to all clients in the game
+	// This ensures all clients have up-to-date player information
+	go func() {
+		// Give time for the client to fully register
+		time.Sleep(500 * time.Millisecond)
+
+		// Create player list to broadcast
+		h.clientsMutex.RLock()
+		players := []map[string]interface{}{}
+
+		if gamePlayers, ok := h.clients[gameID]; ok {
+			for pid, client := range gamePlayers {
+				// Only include active clients
+				if client.isActive(90 * time.Second) {
+					// Get player info from the last player_joined message if available
+					playerInfo := h.getPlayerInfo(gameID, pid)
+					if playerInfo == nil {
+						// Fallback to basic info if detailed info not available
+						playerInfo = map[string]interface{}{
+							"id": pid,
+						}
+					}
+					players = append(players, playerInfo)
+				}
+			}
+		}
+		h.clientsMutex.RUnlock()
+
+		// Create the message
+		response := map[string]interface{}{
+			"type":    "active_players",
+			"players": players,
+			"gameId":  gameID,
+		}
+
+		// Marshal to JSON
+		responseJSON, err := json.Marshal(response)
+		if err != nil {
+			h.logger.Warnf("Failed to marshal player list: %v", err)
+			return
+		}
+
+		// Broadcast to all clients in this game
+		h.BroadcastToGame(gameID, responseJSON)
+		h.logger.Infof("Broadcasting player list to all clients: %d players", len(players))
+	}()
+}
+
+// readPump pumps messages from the WebSocket connection to the hub
+func (c *Client) readPump() {
+	defer func() {
+		c.hub.unregister <- c
+		c.conn.Close()
+	}()
+
+	// Initialize lastPongTime to current time
+	c.pongMutex.Lock()
+	c.lastPongTime = time.Now()
+	c.pongMutex.Unlock()
+
+	c.conn.SetReadLimit(4096)                                // Max message size
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second)) // Adjust as needed
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+		// Update lastPongTime when a pong is received
+		c.pongMutex.Lock()
+		c.lastPongTime = time.Now()
+		c.pongMutex.Unlock()
+
+		return nil
+	})
+
+	for {
+		_, message, err := c.conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				c.hub.logger.Warnf("WebSocket read error: %v", err)
+			}
+			break
+		}
+
+		// Handle incoming message
+		c.handleMessage(message)
+	}
+}
+
+// writePump pumps messages from the hub to the WebSocket connection
+func (c *Client) writePump() {
+	ticker := time.NewTicker(30 * time.Second) // Ping interval
+	defer func() {
+		ticker.Stop()
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				// Channel was closed
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Add queued messages to the current WebSocket message
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write([]byte{'\n'})
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
+				return
+			}
+
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// handleMessage processes incoming WebSocket messages
+func (c *Client) handleMessage(message []byte) {
+	// Parse message and handle different event types
+	c.hub.logger.Infof("Received message from Player %s in Game %s", c.playerID, c.gameID)
+
+	// Add support for encoding/json
+	var msg map[string]interface{}
+	err := json.Unmarshal(message, &msg)
+	if err != nil {
+		c.hub.logger.Warnf("Failed to parse message: %v", err)
+		return
+	}
+
+	// Get message type if available
+	msgType, ok := msg["type"].(string)
+	if !ok {
+		c.hub.logger.Warnf("Message missing 'type' field: %v", string(message))
+		return
+	}
+
+	c.hub.logger.Infof("Processing message type: %s from player %s", msgType, c.playerID)
+
+	switch msgType {
+	case "player_joined":
+		// Extract player info from the message
+		playerInfo, ok := msg["player"].(map[string]interface{})
+		if !ok {
+			c.hub.logger.Warnf("Invalid player_joined message format - missing player info")
+			return
+		}
+
+		// Log the player info for debugging
+		c.hub.logger.Infof("Player joined: %v", playerInfo)
+
+		// Store this player's info for future use
+		c.hub.storePlayerInfo(c.gameID, playerInfo["id"].(string), playerInfo)
+
+		// Broadcast to ALL clients in the game, including the sender
+		// This ensures everyone has consistent player information
+		c.hub.BroadcastToGame(c.gameID, message)
+		c.hub.logger.Infof("Broadcasting player_joined to all clients in game %s", c.gameID)
+
+		// After a player joins, broadcast updated active players list to all clients
+		go func() {
+			// Give a short delay to ensure the player_joined message is processed first
+			time.Sleep(100 * time.Millisecond)
+			c.handleGetActivePlayers()
+		}()
+
+	case "get_active_players":
+		// Handle request for active players list
+		c.handleGetActivePlayers()
+
+	case "player_ready":
+		// Extract player info from the message
+		playerId, ok := msg["playerId"].(string)
+		if !ok {
+			c.hub.logger.Warnf("Invalid player_ready message format - missing playerId")
+			return
+		}
+
+		isReady, ok := msg["isReady"].(bool)
+		if !ok {
+			c.hub.logger.Warnf("Invalid player_ready message format - missing isReady")
+			return
+		}
+
+		// Update player info in our storage
+		playerInfo := c.hub.getPlayerInfo(c.gameID, playerId)
+		if playerInfo != nil {
+			playerInfo["isReady"] = isReady
+			c.hub.storePlayerInfo(c.gameID, playerId, playerInfo)
+		}
+
+		// Broadcast player ready status to all clients
+		c.hub.BroadcastToGame(c.gameID, message)
+		c.hub.logger.Infof("Broadcasting player_ready to all clients in game %s", c.gameID)
+
+		// After player ready status changes, broadcast updated active players list
+		go func() {
+			// Give a short delay to ensure the player_ready message is processed first
+			time.Sleep(100 * time.Millisecond)
+			c.handleGetActivePlayers()
+		}()
+
+	default:
+		// By default, broadcast all messages to other clients in the game
+		c.hub.BroadcastToGameExcept(c.gameID, message, c.playerID)
+	}
+}
+
+// handleGetActivePlayers responds with a list of active players in the game
+func (c *Client) handleGetActivePlayers() {
+	c.hub.clientsMutex.RLock()
+	players := []map[string]interface{}{}
+
+	// Create a list of all connected players in this game
+	if gamePlayers, ok := c.hub.clients[c.gameID]; ok {
+		for playerID, client := range gamePlayers {
+			// Only include active clients (responded to ping within 90 seconds)
+			if client.isActive(90 * time.Second) {
+				// Get player info from the last player_joined message if available
+				playerInfo := c.hub.getPlayerInfo(c.gameID, playerID)
+				if playerInfo == nil {
+					// Fallback to basic info if detailed info not available
+					playerInfo = map[string]interface{}{
+						"id": playerID,
+					}
+				}
+				players = append(players, playerInfo)
+			}
+		}
+	}
+	c.hub.clientsMutex.RUnlock()
+
+	// Create response message
+	response := map[string]interface{}{
+		"type":    "active_players",
+		"players": players,
+		"gameId":  c.gameID,
+	}
+
+	// Marshal to JSON
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		c.hub.logger.Warnf("Failed to marshal active_players response: %v", err)
+		return
+	}
+
+	// Broadcast to all clients in the game
+	c.hub.BroadcastToGame(c.gameID, responseJSON)
+	c.hub.logger.Infof("Broadcasting active_players response with %d players to all clients in game %s", len(players), c.gameID)
+}
+
+// isActive checks if the client is still active based on the last pong time
+// Returns true if the client has responded to a ping within the inactivity threshold
+func (c *Client) isActive(inactivityThreshold time.Duration) bool {
+	c.pongMutex.RLock()
+	defer c.pongMutex.RUnlock()
+
+	return time.Since(c.lastPongTime) < inactivityThreshold
+}

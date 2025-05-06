@@ -1,0 +1,216 @@
+# Kekopoly: Modified Game Rules
+
+## Game Overview
+Kekopoly is a multiplayer property trading board game based on internet meme culture, using Kekels Meme Tokens (KMT) on the Solana blockchain. This modified version introduces unique mechanics that enhance the meme theme and create a more dynamic gameplay experience.
+
+⚠️ **IMPORTANT TOKEN VALUE NOTICE** ⚠️  
+*This game uses real Kekels Meme Tokens (KMT) on the Solana blockchain. Game outcomes can affect token value. Participate at your own risk and only play with tokens you can afford to lose.*
+
+## Key Rule Modifications
+
+### Starting Money & Economy
+- Players start with **2000 Kekels** 
+- The "KEKOPOLY COLLECT 200 KEKELS" space now awards 200 Kekels, but also requires the player to post a meme in the game chat (verified by other players)
+- When a player passes START, they can choose to collect either 100 Kekels OR draw a card from any deck
+
+### Property & Rent Changes
+- **Rent Multipliers**: Properties in the same color group have a 3x multiplier (instead of 2x) when owned by the same player
+- **Meme Stations**: Now called "Engagement" and represent viral popularity
+- **Viral Centers**: Now called "Blue Checkmarks" and represent verified status
+- **Ownership Display**: Properties now show the owner's meme character as a visual indicator
+
+### Special Space Rules
+- **Gaming Chair**: When landing on this space, the player can choose to "Stream" a property they own, doubling its rent for the next 3 rounds
+- **FREE SPACE**: When landing on any Free Space, players can choose to "Touch Grass" (skip their next turn) to collect 150 Kekels
+- **RAGE TRAIN** and **PEPE TRAIN**: Transit properties now have special movement abilities - the owner can choose to move to another transit property once per round
+- **KEK SERVERS**: When owning this utility, player can "host" one property, making it immune to negative card effects
+
+### New Jail Mechanics
+- **Meme Jail**: Renamed to "Shadowban"
+- To get out of Shadowban, a player can:
+  - Pay 50 Kekels
+  - Roll doubles
+  - Use a "Verification" card
+  - Sacrifice one Engagement/Blue Checkmark from any owned property
+- While shadowbanned, a player can still collect rent but at half the normal rate
+
+### Card System Overhaul
+- Cards now have three rarity tiers: Common (green), Rare (blue), and Legendary (gold)
+- Players hold cards in their "hand" and can play them strategically (limit 3 cards held at once)
+- New "Combo" mechanics - playing specific card combinations creates powerful effects
+
+## Gameplay Flow
+
+### Setup Phase
+1. Players connect their Solana wallets and select meme character tokens
+2. Starting player determined by highest combined dice roll
+3. Each player starts with 2000 Kekels and one random Common card
+
+### Turn Structure
+1. **Memeconomy Phase**: Roll to check for market conditions
+   - Roll 6: Meme market crash - all properties devalue by 10% for one round
+   - Roll 1: Bull market - all properties increase value by 10% for one round
+
+2. **Movement Phase**: Roll dice and move
+   - Doubles grant an extra turn (three consecutive doubles → Shadowban)
+   - Special movement abilities can be used before rolling
+
+3. **Action Phase**: Based on landing space
+   - Property spaces: Buy, auction, or pay rent
+   - Card spaces: Draw card based on space color
+   - Special spaces: Perform special actions
+
+4. **Trading Phase**: Negotiate deals with other players
+   - Properties can be traded
+   - Cards can be traded
+   - Kekels can be exchanged
+   - Special "Insider Trading" - once per game, a player can trade with someone not on their turn
+
+
+5. **Building Phase**: Add Engagement or Blue Checkmarks
+   - Must own complete color group
+   - Engagement costs vary by property tier
+   - Blue Checkmark costs 5x the Engagement cost
+
+6. **Card Play Phase**: Use cards from hand (optional)
+   - Play up to one card per turn
+   - Cards can be played to help yourself or hinder opponents
+
+### Victory Conditions
+- **Standard Victory**: Last player remaining after others are bankrupt
+- **Time Attack**: Player with highest net worth after predetermined number of rounds
+- **Meme Lord**: First player to own at least one property in each color group and have a Blue Checkmark on any property
+
+## Card List (Modified)
+
+### Meme Cards
+1. **Viral Meme** (Rare): Collect 50 Kekels from each player
+2. **Stonks** (Common): Advance to START and collect 200 Kekels
+3. **Wojak Panic** (Common): Pay 50 Kekels to the next player
+4. **Doge WOW** (Rare): Collect 200 Kekels from the previous player
+5. **Chad Yes** (Rare): Advance to any property and buy it if unowned
+6. **Pepe Sad** (Common): Go back 3 spaces
+7. **Diamond Hands** (Legendary): All your properties are immune to being stolen or devalued for 3 rounds
+8. **Paper Hands** (Common): You must mortgage one property if possible
+9. **NFT Collection** (Rare): Collect 25 Kekels for each property you own
+10. **FOMO** (Common): You must buy the next unowned property you land on
+11. **Galaxy Brain** (Legendary): Choose any space on the board and teleport there
+12. **Bait and Switch** (Rare): Swap positions with any player
+13. **Ratio'd** (Common): All players vote on a player who must forfeit 50 Kekels 
+14. **Copypasta** (Rare): Copy the effect of any card played in the last round
+15. **Shitposting** (Common): All players must roll a die - lowest number pays 50 Kekels to you
+16. **Meme Review** (Legendary): Collect 100 Kekels and an additional 25 for each Engagement/Blue Checkmark you own
+
+### Redpill Cards
+1. **Based** (Rare): Collect 150 Kekels from all the players
+2. **Cringe** (Common): Pay 150 Kekels to the next player
+3. **Server Maintenance** (Common): Pay 40 Kekels for each Engagement you own
+4. **Doxx'd** (Common): Your position is revealed to all players who can charge you double rent for 2 rounds
+5. **Crypto Whale** (Legendary): Take ownership of any one property by paying twice its value to the owner
+6. **Shadowbanned** (Common): Go directly to Shadowban
+7. **Crypto Winter** (Rare): Lose half your Kekels (rounded down)
+8. **HODL** (Rare): All your properties generate double rent for one round
+9. **Trollface** (Common): Force another player to swap positions with any player of your choice
+10. **Ratio'd** (Common): Pay 10% of your Kekels to the player with the least amount
+11. **Verification Check** (Rare): Get out of Shadowban free card
+12. **Airdrop** (Common): Roll a die and collect that many x25 Kekels
+13. **Flash Crash** (Legendary): All players must forfeit 20% of their cash
+14. **Exit Scam** (Rare): Steal 50 Kekels from each player but go to Shadowban immediately
+15. **Token Unlock** (Common): Collect 50 Kekels from the all the player
+16. **Rugpull** (Legendary): Force one player to mortgage one of their properties of your choice
+
+
+
+## Special Meme Rules
+
+### Kek's Blessing
+If a player owns all Temple of Kek properties, they can invoke "Kek's Blessing" once per game to avoid paying rent when landing on another player's property.
+
+### Giga Chad Move
+Once per game, each player can make a "Giga Chad Move" when landing on another player's property. This allows them to challenge the owner to a dice roll - if the challenger rolls higher, they don't pay rent; if the owner rolls higher, the challenger pays double rent.
+
+### The Redpill
+When passing START, a player can choose to be "redpilled" - they skip collecting 100 Kekels but get to draw a Redpill Card for a possible greater reward (or punishment).
+
+### Meme Economy Crash
+At the start of each round, the first player rolls one die. If a 6 is rolled, the meme economy crashes - all players must forfeit 10% of their cash 
+
+### New Rule: Dankest Meme
+Once per game, a player can declare "Dankest Meme" when they own at least 3 properties. All other players vote on whether to approve. If approved, the player collects 50 Kekels from each player. If rejected, the player pays 50 Kekels to each player.
+
+### New Rule: Meme Royalties
+When a player builds the first Engagement on a property, they name the "meme" for that property. Every time any player lands on that property, they must say the meme name or pay an additional 10 Kekels.
+
+### New Rule: Blockchain Fork
+If a player lands on START and rolls doubles on their next turn, they can initiate a "Blockchain Fork" - all property values are reassessed and either increase or decrease by 25% (determined by a die roll: 1-3 decrease, 4-6 increase).
+
+## Building Mechanics
+
+### Engagement (Houses)
+- First Engagement: Base rent × 5
+- Second Engagement: Base rent × 15
+- Third Engagement: Base rent × 30
+- Fourth Engagement: Base rent × 45
+
+### Blue Checkmark (Hotel)
+- Blue Checkmark: Base rent × 70
+
+### Viral Trend Mechanic
+When a player builds a Blue Checkmark, they start a "Viral Trend" - all other players must pay 10 Kekels to the next player when passing (not landing on) that property for the next full round.
+
+Kekopoly Technical Implementation Plan
+Technology Stack Overview
+Frontend
+
+Framework: React 18+
+UI Library: Chakra UI
+State Management: Redux Toolkit
+Real-time Communication: Socket.io-client
+Blockchain Integration: Solana Web3.js
+Wallet Connection: Solana Wallet Adapter
+Animation: Framer Motion
+Build Tool: Vite
+Testing: Jest and React Testing Library
+
+Backend
+
+Language: Go (Golang) 1.20+
+Web Framework: Echo
+WebSockets: gorilla/websocket
+JWT Authentication: golang-jwt/jwt
+Blockchain Integration: Solana-go
+Validation: validator/v10
+Testing: testify
+
+Database
+
+Primary Database: MongoDB
+Caching Layer: Redis
+Database Driver: MongoDB Go Driver
+Schema Validation: MongoDB JSON Schema
+
+DevOps & Infrastructure
+
+Containerization: Docker
+Container Orchestration: Kubernetes
+CI/CD: GitHub Actions
+Cloud Provider: AWS or GCP
+Monitoring: Prometheus + Grafana
+Logging: ELK Stack or Loki
+
+System Architecture
+
+┌─────────────────────────────────┐      ┌─────────────────────────────────┐
+│                                 │      │                                 │
+│        React Frontend           │◄────►│         Golang Backend          │
+│     (Chakra UI + Web3.js)       │      │       (Echo + Solana-go)        │
+│                                 │      │                                 │
+└───────────────┬─────────────────┘      └───────────────┬─────────────────┘
+                │                                         │
+                ▼                                         ▼
+┌─────────────────────────────────┐      ┌─────────────────────────────────┐
+│                                 │      │                                 │
+│      Solana Blockchain          │◄────►│         MongoDB + Redis         │
+│       (Kekels Token)            │      │      (Game State Storage)       │
+│                                 │      │                                 │
+└─────────────────────────────────┘      └─────────────────────────────────┘

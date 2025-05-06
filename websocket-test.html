@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, button {
+            padding: 8px;
+            width: 100%;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        .incoming {
+            background-color: #e3f2fd;
+        }
+        .outgoing {
+            background-color: #e8f5e9;
+        }
+        .error {
+            background-color: #ffebee;
+        }
+        .status {
+            font-weight: bold;
+        }
+        .connected {
+            color: green;
+        }
+        .disconnected {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebSocket Test Tool</h1>
+        
+        <div class="card">
+            <h2>Connection</h2>
+            <div class="form-group">
+                <label for="gameId">Game ID / Room Code:</label>
+                <input type="text" id="gameId" placeholder="Enter game ID or room code">
+            </div>
+            <div class="form-group">
+                <label for="playerId">Player ID:</label>
+                <input type="text" id="playerId" placeholder="Enter player ID">
+            </div>
+            <div class="form-group">
+                <label for="token">Token:</label>
+                <input type="text" id="token" placeholder="Enter token (optional)">
+            </div>
+            <div class="form-group">
+                <label for="sessionId">Session ID:</label>
+                <input type="text" id="sessionId" placeholder="Enter session ID (optional)">
+            </div>
+            <div class="form-group">
+                <button id="connectBtn">Connect</button>
+                <button id="disconnectBtn" disabled>Disconnect</button>
+            </div>
+            <div class="status">Status: <span id="connectionStatus" class="disconnected">Disconnected</span></div>
+        </div>
+        
+        <div class="card">
+            <h2>Send Message</h2>
+            <div class="form-group">
+                <label for="messageType">Message Type:</label>
+                <select id="messageType">
+                    <option value="player_joined">player_joined</option>
+                    <option value="get_active_players">get_active_players</option>
+                    <option value="player_ready">player_ready</option>
+                    <option value="verify_host">verify_host</option>
+                    <option value="custom">Custom Message</option>
+                </select>
+            </div>
+            <div class="form-group" id="customMessageContainer" style="display: none;">
+                <label for="customMessage">Custom Message (JSON):</label>
+                <textarea id="customMessage" rows="5" style="width: 100%;">{
+  "type": "custom_message",
+  "data": "Hello, world!"
+}</textarea>
+            </div>
+            <div class="form-group">
+                <button id="sendBtn" disabled>Send Message</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Messages</h2>
+            <button id="clearBtn">Clear Messages</button>
+            <div id="messages" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const gameIdInput = document.getElementById('gameId');
+        const playerIdInput = document.getElementById('playerId');
+        const tokenInput = document.getElementById('token');
+        const sessionIdInput = document.getElementById('sessionId');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const messageTypeSelect = document.getElementById('messageType');
+        const customMessageContainer = document.getElementById('customMessageContainer');
+        const customMessageInput = document.getElementById('customMessage');
+        const sendBtn = document.getElementById('sendBtn');
+        const messagesDiv = document.getElementById('messages');
+        const clearBtn = document.getElementById('clearBtn');
+
+        // WebSocket instance
+        let socket = null;
+
+        // Generate a random ID
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 15);
+        }
+
+        // Initialize with random values
+        playerIdInput.value = generateRandomId();
+        sessionIdInput.value = generateRandomId();
+
+        // Connect to WebSocket
+        connectBtn.addEventListener('click', () => {
+            const gameId = gameIdInput.value.trim();
+            const playerId = playerIdInput.value.trim();
+            const token = tokenInput.value.trim();
+            const sessionId = sessionIdInput.value.trim() || generateRandomId();
+
+            if (!gameId || !playerId) {
+                addMessage('Please enter Game ID and Player ID', 'error');
+                return;
+            }
+
+            // Normalize gameId to lowercase
+            const normalizedGameId = gameId.toLowerCase();
+            
+            // Construct WebSocket URL
+            const host = window.location.hostname || 'localhost';
+            const port = '8080'; // Adjust if needed
+            const encodedToken = token ? encodeURIComponent(token) : '';
+            const wsUrl = `ws://${host}:${port}/ws/${normalizedGameId}?sessionId=${sessionId}&token=${encodedToken}`;
+            
+            addMessage(`Connecting to ${wsUrl}`, 'status');
+            
+            try {
+                socket = new WebSocket(wsUrl);
+                
+                socket.onopen = () => {
+                    connectionStatus.textContent = 'Connected';
+                    connectionStatus.className = 'connected';
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    sendBtn.disabled = false;
+                    addMessage('Connection established', 'status');
+                    
+                    // Automatically send player_joined message
+                    const playerJoinedMsg = {
+                        type: 'player_joined',
+                        player: {
+                            id: playerId,
+                            name: `Player_${playerId.substring(0, 4)}`,
+                            token: '',
+                            emoji: '👤',
+                            color: 'gray.500',
+                            isReady: false
+                        }
+                    };
+                    socket.send(JSON.stringify(playerJoinedMsg));
+                    addMessage(`Automatically sent: ${JSON.stringify(playerJoinedMsg)}`, 'outgoing');
+                    
+                    // Request active players
+                    const activePlayersMsg = {
+                        type: 'get_active_players'
+                    };
+                    socket.send(JSON.stringify(activePlayersMsg));
+                    addMessage(`Automatically sent: ${JSON.stringify(activePlayersMsg)}`, 'outgoing');
+                };
+                
+                socket.onmessage = (event) => {
+                    const data = event.data;
+                    addMessage(data, 'incoming');
+                    
+                    // Parse and display formatted JSON
+                    try {
+                        const jsonData = JSON.parse(data);
+                        console.log('Received message:', jsonData);
+                        
+                        // Handle specific message types
+                        if (jsonData.type === 'host_changed') {
+                            addMessage(`Host changed to: ${jsonData.hostId}`, 'status');
+                        } else if (jsonData.type === 'active_players') {
+                            addMessage(`Active players: ${jsonData.players.length}`, 'status');
+                        }
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                    }
+                };
+                
+                socket.onclose = (event) => {
+                    connectionStatus.textContent = `Disconnected (${event.code}: ${event.reason})`;
+                    connectionStatus.className = 'disconnected';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    sendBtn.disabled = true;
+                    addMessage(`Connection closed: ${event.code} ${event.reason}`, 'status');
+                    socket = null;
+                };
+                
+                socket.onerror = (error) => {
+                    addMessage(`WebSocket error: ${error}`, 'error');
+                };
+            } catch (error) {
+                addMessage(`Failed to create WebSocket: ${error}`, 'error');
+            }
+        });
+        
+        // Disconnect from WebSocket
+        disconnectBtn.addEventListener('click', () => {
+            if (socket) {
+                socket.close();
+                socket = null;
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                sendBtn.disabled = true;
+                addMessage('Disconnected', 'status');
+            }
+        });
+        
+        // Handle message type selection
+        messageTypeSelect.addEventListener('change', () => {
+            if (messageTypeSelect.value === 'custom') {
+                customMessageContainer.style.display = 'block';
+            } else {
+                customMessageContainer.style.display = 'none';
+            }
+        });
+        
+        // Send message
+        sendBtn.addEventListener('click', () => {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                addMessage('WebSocket is not connected', 'error');
+                return;
+            }
+            
+            let message;
+            
+            if (messageTypeSelect.value === 'custom') {
+                try {
+                    message = JSON.parse(customMessageInput.value);
+                } catch (e) {
+                    addMessage(`Invalid JSON: ${e}`, 'error');
+                    return;
+                }
+            } else if (messageTypeSelect.value === 'player_joined') {
+                message = {
+                    type: 'player_joined',
+                    player: {
+                        id: playerIdInput.value,
+                        name: `Player_${playerIdInput.value.substring(0, 4)}`,
+                        token: '',
+                        emoji: '👤',
+                        color: 'gray.500',
+                        isReady: false
+                    }
+                };
+            } else if (messageTypeSelect.value === 'get_active_players') {
+                message = {
+                    type: 'get_active_players'
+                };
+            } else if (messageTypeSelect.value === 'player_ready') {
+                message = {
+                    type: 'player_ready',
+                    playerId: playerIdInput.value,
+                    isReady: true
+                };
+            } else if (messageTypeSelect.value === 'verify_host') {
+                message = {
+                    type: 'verify_host',
+                    gameId: gameIdInput.value.toLowerCase()
+                };
+            }
+            
+            const messageStr = JSON.stringify(message);
+            socket.send(messageStr);
+            addMessage(messageStr, 'outgoing');
+        });
+        
+        // Clear messages
+        clearBtn.addEventListener('click', () => {
+            messagesDiv.innerHTML = '';
+        });
+        
+        // Add message to the messages div
+        function addMessage(message, type) {
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${type}`;
+            
+            // Try to format JSON
+            if (type === 'incoming' || type === 'outgoing') {
+                try {
+                    const jsonData = typeof message === 'string' ? JSON.parse(message) : message;
+                    message = JSON.stringify(jsonData, null, 2);
+                } catch (e) {
+                    // Not JSON, use as is
+                }
+            }
+            
+            messageElement.textContent = message;
+            messagesDiv.appendChild(messageElement);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>

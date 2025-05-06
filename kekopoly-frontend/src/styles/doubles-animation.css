@@ -1,0 +1,41 @@
+/* Animation for doubles roll */
+@keyframes doublesShake {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(-5px, -5px) rotate(-2deg); }
+  20% { transform: translate(5px, -5px) rotate(2deg); }
+  30% { transform: translate(-5px, 5px) rotate(-2deg); }
+  40% { transform: translate(5px, 5px) rotate(2deg); }
+  50% { transform: translate(-5px, -5px) rotate(-2deg); }
+  60% { transform: translate(5px, -5px) rotate(2deg); }
+  70% { transform: translate(-5px, 5px) rotate(-2deg); }
+  80% { transform: translate(5px, 5px) rotate(2deg); }
+  90% { transform: translate(-5px, -5px) rotate(-2deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@keyframes doublesGlow {
+  0% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.5); }
+  50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
+  100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.5); }
+}
+
+/* Apply animation to game board when doubles are rolled */
+.doubles-animation {
+  animation: doublesShake 0.8s ease-in-out, doublesGlow 1s ease-in-out;
+}
+
+/* Style for doubles message in game log */
+.game-message.EXTRA_TURN {
+  background-color: rgba(255, 215, 0, 0.2);
+  border-left: 3px solid gold;
+  font-weight: bold;
+  padding: 8px;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+
+/* Style for dice that show doubles */
+.dice-container.doubles .dice {
+  border: 2px solid gold;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
