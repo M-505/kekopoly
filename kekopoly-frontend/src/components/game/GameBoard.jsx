@@ -376,10 +376,16 @@ const GameBoard = React.memo(() => {
 
   const gameState = useSelector((state) => state.game);
 
-  // Function to synchronize player data between stores if needed
+  // Function to synchronize player data between stores if needed - optimized version
   const syncPlayerData = useCallback(() => {
     // Skip synchronization if window flag is set to prevent infinite loops
     if (window._isPlayerSyncInProgress) {
+      return;
+    }
+
+    // Skip if we already have players in the game state and they match the lobby players count
+    if (gamePlayers && gamePlayers.length > 0 &&
+        Object.keys(lobbyPlayers || {}).length === gamePlayers.length) {
       return;
     }
 
@@ -387,11 +393,6 @@ const GameBoard = React.memo(() => {
     window._isPlayerSyncInProgress = true;
 
     try {
-      console.log('[SYNC_PLAYERS] Starting player data synchronization');
-      console.log('[SYNC_PLAYERS] Lobby players:', lobbyPlayers);
-      console.log('[SYNC_PLAYERS] Game players:', gamePlayers);
-
-      // Always synchronize to ensure all players are properly rendered
       // Convert playerSlice players (object) to array format for gameSlice
       const playersArray = Object.values(lobbyPlayers || {}).map(player => ({
         id: player.id,
@@ -415,9 +416,8 @@ const GameBoard = React.memo(() => {
         },
       }));
 
-      // Update the gameSlice with the converted players array
-      console.log('[SYNC_PLAYERS] Updating game slice with players:', playersArray);
-      dispatch(setPlayers(playersArray));
+      // Update the gameSlice with the converted players array - use meta flag to prevent circular updates
+      dispatch(setPlayers(playersArray, { isSync: true }));
 
       // Also ensure game state is properly set
       dispatch(setGameStarted(true));
@@ -425,14 +425,11 @@ const GameBoard = React.memo(() => {
 
       // If we have a host ID but no current player, set the current player to the host
       if (gameState.hostId && !currentPlayer) {
-        console.log('[SYNC_PLAYERS] Setting current player to host:', gameState.hostId);
         dispatch(setCurrentPlayer(gameState.hostId));
       }
     } finally {
       // Clear the flag after synchronization is complete
-      setTimeout(() => {
-        window._isPlayerSyncInProgress = false;
-      }, 500); // Add a small delay to prevent rapid re-synchronization
+      window._isPlayerSyncInProgress = false;
     }
   }, [lobbyPlayers, gamePlayers, dispatch, gameState.hostId, currentPlayer]);
 
@@ -676,7 +673,30 @@ const GameBoard = React.memo(() => {
     syncPlayerData();
 
     // Only run this effect once on mount
-  }, [dispatch]);
+  }, [dispatch, syncPlayerData]);
+
+  // Add useEffect to handle the case where the current player is null
+  useEffect(() => {
+    // If we have players but no current player, request the current turn from the server
+    if (players.length > 0 && !currentPlayer) {
+      console.log('[GAMEBOARD] Requesting player data on mount');
+
+      // If we're the host, set the current player to the host
+      if (hostId && socketService?.localPlayerId === hostId) {
+        console.log('[GAMEBOARD] Setting current player to host:', hostId);
+        dispatch(setCurrentPlayer(hostId));
+      }
+
+      // Request current turn from server
+      if (socketService?.socket?.readyState === WebSocket.OPEN) {
+        console.log('[GAMEBOARD] Requesting current turn from server');
+        socketService.sendMessage('get_current_turn', {});
+
+        // Also request full game state
+        socketService.sendMessage('get_game_state', { full: true });
+      }
+    }
+  }, [players, currentPlayer, hostId, dispatch]);
 
   // Add useEffect to automatically fix player display issues on component mount
   // Use a ref to ensure this only runs once
@@ -724,19 +744,21 @@ const GameBoard = React.memo(() => {
     }, 500);
   }, [dispatch, players, lobbyPlayers]);
 
-  // Add WebSocket connection listener
+  // Add WebSocket connection listener - optimized version
   useEffect(() => {
     // Function to handle WebSocket connection events
     const handleWebSocketConnected = () => {
       setSocketConnected(true);
 
-      // Request active players and game state
-      setTimeout(() => {
-        if (socketService?.socket?.readyState === WebSocket.OPEN) {
-          socketService.sendMessage('get_active_players');
-          socketService.sendMessage('get_game_state', { full: true });
-        }
-      }, 200);
+      // Request active players and game state - but only if we don't already have players
+      if (!players || players.length === 0) {
+        setTimeout(() => {
+          if (socketService?.socket?.readyState === WebSocket.OPEN) {
+            socketService.sendMessage('get_active_players');
+            socketService.sendMessage('get_game_state', { full: true });
+          }
+        }, 200);
+      }
     };
 
     // Function to handle WebSocket disconnection events
@@ -765,23 +787,23 @@ const GameBoard = React.memo(() => {
       // Only update state if connection status has changed
       if (isConnected !== socketConnected) {
         setSocketConnected(isConnected);
-      }
 
-      // If disconnected, try to reconnect
-      if (!isConnected) {
-        // Get connection info from localStorage
-        const gameId = localStorage.getItem('kekopoly_game_id');
-        const playerId = localStorage.getItem('kekopoly_player_id');
-        const authToken = localStorage.getItem('kekopoly_auth_token');
+        // Only try to reconnect if we were previously connected and now disconnected
+        if (!isConnected && socketConnected) {
+          // Get connection info from localStorage
+          const gameId = localStorage.getItem('kekopoly_game_id');
+          const playerId = localStorage.getItem('kekopoly_player_id');
+          const authToken = localStorage.getItem('kekopoly_auth_token');
 
-        if (gameId && playerId && authToken) {
-          socketService.connect(gameId, playerId, authToken)
-            .catch(error => {
-              // Silently handle error to avoid console spam
-            });
+          if (gameId && playerId && authToken) {
+            socketService.connect(gameId, playerId, authToken)
+              .catch(error => {
+                // Silently handle error to avoid console spam
+              });
+          }
         }
       }
-    }, 10000); // Reduced frequency from 5000ms to 10000ms
+    }, 15000); // Further reduced frequency to 15 seconds
 
     // Clean up event listeners and interval on unmount
     return () => {
@@ -796,7 +818,7 @@ const GameBoard = React.memo(() => {
       // Reset player sync flag
       window._isPlayerSyncInProgress = false;
     };
-  }, [socketConnected]);
+  }, [socketConnected, players, toast]);
 
   // Detect after movement if player is on an unowned property
   useEffect(() => {
@@ -2413,30 +2435,20 @@ const GameBoard = React.memo(() => {
                       );
                     })}
 
-                    {/* Player Tokens on Board */}
+                    {/* Player Tokens on Board - Optimized rendering */}
                     {startCoords && uniquePlayers && uniquePlayers.length > 0 ? (
-                        // Add a key to force re-render when players change
+                        // Use React.memo for player tokens to prevent unnecessary re-renders
                         uniquePlayers.map((player, index) => {
                             if (!player) {
-                                console.warn('[PLAYER_RENDER] Skipping null player at index', index);
                                 return null;
                             }
 
-                            console.log('[PLAYER_RENDER] Rendering player token:', {
-                                id: player.id,
-                                name: player.name,
-                                token: player.token,
-                                characterToken: player.characterToken,
-                                emoji: player.emoji,
-                                position: player.position
-                            });
-
-                            // Get token from player data - try multiple properties with detailed logging
+                            // Get token from player data - try multiple properties
                             // First check characterToken, then token, then emoji
                             let playerToken = player.characterToken || player.token || player.emoji || ':)';
 
-                            // Only try to get token from localStorage for local player
-                            if (player.id === socketService?.localPlayerId) {
+                            // Only try to get token from localStorage for local player once
+                            if (player.id === socketService?.localPlayerId && !player._tokenInitialized) {
                                 try {
                                     const storedTokenData = localStorage.getItem('kekopoly_player_token_data');
                                     if (storedTokenData) {
@@ -2453,19 +2465,20 @@ const GameBoard = React.memo(() => {
                                                         token: parsedTokenData.token || '',
                                                         emoji: parsedTokenData.emoji || '👤',
                                                         color: parsedTokenData.color || 'gray.500',
-                                                        characterToken: parsedTokenData.token || parsedTokenData.emoji || '👤'
+                                                        characterToken: parsedTokenData.token || parsedTokenData.emoji || '👤',
+                                                        _tokenInitialized: true
                                                     }
                                                 }));
                                             }
                                         }
                                     }
                                 } catch (e) {
-                                    console.warn('[PLAYER_RENDER] Error getting token from localStorage:', e);
+                                    // Silent error handling
                                 }
                             }
 
                             // If we still don't have a token, use a consistent default based on player ID
-                            if (!playerToken || playerToken === ':)') {
+                            if ((!playerToken || playerToken === ':)') && !player._tokenInitialized) {
                                 // Use a deterministic approach to assign tokens based on player ID
                                 const emojiOptions = ['👤', '🐸', '💪', '😢', '🐕', '🐱', '👹', '🌕', '🚀'];
 
@@ -2474,20 +2487,16 @@ const GameBoard = React.memo(() => {
                                                    (player.id.charCodeAt(1) || 0)) % emojiOptions.length;
                                 playerToken = emojiOptions[playerIndex];
 
-                                // Always update Redux with the assigned token to ensure consistency
+                                // Update Redux with the assigned token to ensure consistency
                                 dispatch(updatePlayer({
                                     playerId: player.id,
                                     updates: {
                                         token: playerToken,
                                         emoji: playerToken,
-                                        characterToken: playerToken
+                                        characterToken: playerToken,
+                                        _tokenInitialized: true
                                     }
                                 }));
-
-                                console.log('[PLAYER_RENDER] Assigned default token to player:', {
-                                    id: player.id,
-                                    token: playerToken
-                                });
 
                                 // Also send to server if this is the local player
                                 if (player.id === socketService?.localPlayerId && socketService && socketService.socket && socketService.socket.readyState === WebSocket.OPEN) {
@@ -2500,15 +2509,11 @@ const GameBoard = React.memo(() => {
                                 }
                             }
 
-                            // Log token selection for debugging
-                            console.log(`[PLAYER_RENDER] Using token "${playerToken}" for player ${player.id} (${player.name})`);
-
                             // Use the map, fall back by looking up the :) emoji key
                             let tokenImg = tokenImageMap[playerToken] || tokenImageMap[':)'] || tokenPepe;
 
                             // Add a final check in case even fallback isn't mapped or image fails
                             if (!tokenImg) {
-                                console.warn(`[PLAYER_RENDER] No token image found for player ${player.id} with token "${playerToken}"`);
                                 // Always use tokenPepe as a last resort to ensure player is visible
                                 tokenImg = tokenPepe;
 

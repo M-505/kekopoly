@@ -46,6 +46,7 @@ const initialState = {
   gameInfo: {}, // Game info from server
   isRolling: false, // Add isRolling state
   gameStartedTimestamp: null, // Timestamp when the game started
+  lastTurnChangeTimestamp: null, // Timestamp when the turn last changed
   turnConfirmed: false, // Flag to track if the current turn has been confirmed by the server
 };
 
@@ -82,9 +83,21 @@ const gameSlice = createSlice({
     setGameStartedTimestamp: (state, action) => {
       state.gameStartedTimestamp = action.payload;
     },
+    // Set the last turn change timestamp explicitly
+    setLastTurnChangeTimestamp: (state, action) => {
+      state.lastTurnChangeTimestamp = action.payload;
+      console.log(`[TURN_CHANGE] Last turn change timestamp set to ${action.payload}`);
+    },
     // Force update the turn state (used for synchronization)
     forceTurnUpdate: (state, action) => {
-      state.currentPlayer = action.payload;
+      // Only update timestamp if the player is actually changing
+      if (state.currentPlayer !== action.payload) {
+        state.currentPlayer = action.payload;
+        state.lastTurnChangeTimestamp = Date.now();
+        console.log(`[TURN_CHANGE] Current player force-changed to ${action.payload}, timestamp updated`);
+      } else {
+        state.currentPlayer = action.payload;
+      }
       state.turnConfirmed = true;
     },
     addPlayer: (state, action) => {
@@ -115,7 +128,14 @@ const gameSlice = createSlice({
       state.players = state.players.filter(player => player.id !== action.payload);
     },
     setCurrentPlayer: (state, action) => {
-      state.currentPlayer = action.payload;
+      // Only update timestamp if the player is actually changing
+      if (state.currentPlayer !== action.payload) {
+        state.currentPlayer = action.payload;
+        state.lastTurnChangeTimestamp = Date.now();
+        console.log(`[TURN_CHANGE] Current player changed to ${action.payload}, timestamp updated`);
+      } else {
+        state.currentPlayer = action.payload;
+      }
     },
     movePlayer: (state, action) => {
       const { playerId, newPosition, oldPosition, diceValues, timestamp } = action.payload;
@@ -387,18 +407,23 @@ const gameSlice = createSlice({
 
       const isDoubles = state.diceRoll[0] === state.diceRoll[1];
       const currentPlayer = state.players[currentIndex];
+      const timestamp = Date.now();
 
       if (!isDoubles || (currentPlayer && currentPlayer.inJail)) {
         // Advance to next player
         const nextIndex = (currentIndex + 1) % state.players.length;
         const nextPlayer = state.players[nextIndex];
         if (nextPlayer) {
+          const previousPlayer = state.currentPlayer;
           state.currentPlayer = nextPlayer.id;
+          state.lastTurnChangeTimestamp = timestamp;
+          console.log(`[TURN_CHANGE] Turn ended, changing from ${previousPlayer} to ${nextPlayer.id}, timestamp updated`);
+
           state.gameMessages.unshift({
             type: 'TURN_CHANGE',
             playerId: nextPlayer.id,
             content: `It's now ${nextPlayer.name}'s turn`,
-            timestamp: Date.now()
+            timestamp: timestamp
           });
         }
       } else {
@@ -407,7 +432,7 @@ const gameSlice = createSlice({
           type: 'EXTRA_TURN',
           playerId: currentPlayer.id,
           content: `${currentPlayer.name} rolled doubles and gets another turn!`,
-          timestamp: Date.now()
+          timestamp: timestamp
         });
       }
     },
@@ -464,6 +489,7 @@ export const {
   setGamePhase,
   syncGameStatus,
   setGameStartedTimestamp,
+  setLastTurnChangeTimestamp,
   forceTurnUpdate,
   addPlayer,
   removePlayer,

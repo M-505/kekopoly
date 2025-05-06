@@ -13,7 +13,8 @@ import {
   setIsRolling,
   updateDiceRoll,
   movePlayer,
-  setPlayers
+  setPlayers,
+  setLastTurnChangeTimestamp
 } from '../store/gameSlice';
 import {
   addPlayer,
@@ -950,7 +951,10 @@ class SocketService {
           break;
 
         case 'player_ready':
-          this.handlePlayerReady(data.playerId, data.isReady);
+          // Extract optional messageId and timestamp
+          const messageId = data.messageId || data.responseToMessageId || null;
+          const timestamp = data.timestamp || Date.now();
+          this.handlePlayerReady(data.playerId, data.isReady, messageId, timestamp);
           break;
 
         case 'game_started':
@@ -3367,26 +3371,95 @@ class SocketService {
     return true;
   };
 
-  handlePlayerReady = (playerId, isReady) => {
+  handlePlayerReady = (playerId, isReady, messageId, timestamp) => {
     const { dispatch } = store;
-    log('PLAYER_READY', `Player ${playerId} ready status changed to: ${isReady}`);
+    log('PLAYER_READY', `Player ${playerId} ready status changed to: ${isReady} (messageId: ${messageId || 'none'})`);
 
-    // Use setPlayerReady instead of updatePlayer
+    // Get current state to check if this is a duplicate or outdated message
+    const currentState = store.getState();
+    const playerInStore = currentState.players.players[playerId];
+
+    // Check if we already have this player with the same ready state
+    if (playerInStore && playerInStore.isReady === isReady) {
+      console.log(`[PLAYER_READY] Player ${playerId} already has ready status ${isReady}, skipping redundant update`);
+      // Still update the game slice to ensure consistency
+      dispatch(setPlayerReady({
+        playerId,
+        isReady
+      }));
+      return;
+    }
+
+    console.log(`[PLAYER_READY] Updating ready status for player ${playerId} to ${isReady}`);
+
+    // Update both player slices to ensure consistency
+    // First update the playerSlice
     dispatch(setPlayerReady({
       playerId,
       isReady
     }));
 
+    // Then update the gameSlice with the same data
+    // This ensures both slices have the same ready state
+    const gamePlayer = currentState.game.players.find(p => p.id === playerId);
+    if (gamePlayer) {
+      console.log(`[PLAYER_READY] Also updating gameSlice for player ${playerId}`);
+      dispatch(setPlayerReady({
+        playerId,
+        isReady
+      }));
+    }
+
     // Request active players to ensure everyone is in sync
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      console.log(`[PLAYER_READY] Requesting active players to verify sync after ready status change`);
       setTimeout(() => {
-        this.sendMessage('get_active_players');
-      }, 100);
+        this.sendMessage('get_active_players', {
+          verifyReadyStatus: true,
+          playerId,
+          expectedReadyStatus: isReady,
+          messageId: messageId || `verify_${Date.now()}`
+        });
+      }, 300);
     }
 
     // Make sure we don't automatically start the game when all players are ready
     // Only the host should be able to start the game by clicking the Start Game button
     console.log('[PLAYER_READY] Player ready status updated, but game will only start when host clicks Start Game');
+
+    // If this is our own player, verify the update was successful
+    if (playerId === this.localPlayerId) {
+      setTimeout(() => {
+        const updatedState = store.getState();
+        const updatedPlayer = updatedState.players.players[playerId];
+        const updatedGamePlayer = updatedState.game.players.find(p => p.id === playerId);
+
+        console.log(`[PLAYER_READY] Verification check for our player ${playerId}:`);
+        console.log(`- playerSlice ready state: ${updatedPlayer?.isReady}`);
+        console.log(`- gameSlice ready state: ${updatedGamePlayer?.isReady}`);
+
+        // If states don't match or don't match expected value, try one more time
+        if (updatedPlayer?.isReady !== isReady || updatedGamePlayer?.isReady !== isReady) {
+          console.warn(`[PLAYER_READY] Ready state verification failed, fixing inconsistency`);
+
+          // Force update both slices again
+          dispatch(setPlayerReady({
+            playerId,
+            isReady
+          }));
+
+          // Request active players again
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            this.sendMessage('get_active_players', {
+              verifyReadyStatus: true,
+              playerId,
+              expectedReadyStatus: isReady,
+              messageId: `verify_retry_${Date.now()}`
+            });
+          }
+        }
+      }, 1000);
+    }
   };
 
   // Handle host changed messages from the server
@@ -4389,8 +4462,17 @@ class SocketService {
     try {
       const now = Date.now();
 
-      // Use cached result if it's recent enough
-      if (this._cachedTurnResult !== null && now - this._lastTurnCheck < this._turnCheckInterval) {
+      // Use cached result if it's recent enough, but only if we're not in a critical period
+      // like right after game start or after a turn change
+      const gameState = store.getState().game;
+      const gameJustStarted = gameState.gameStartedTimestamp && (now - gameState.gameStartedTimestamp < 5000);
+      const recentTurnChange = gameState.lastTurnChangeTimestamp && (now - gameState.lastTurnChangeTimestamp < 2000);
+
+      // Skip cache if game just started or turn just changed
+      if (!gameJustStarted && !recentTurnChange &&
+          this._cachedTurnResult !== null &&
+          now - this._lastTurnCheck < this._turnCheckInterval) {
+        console.log('[TURN_CHECK] Using cached result:', this._cachedTurnResult);
         return this._cachedTurnResult;
       }
 
@@ -4433,16 +4515,53 @@ class SocketService {
         }
       }
 
-      // Return false if either value is undefined
+      // Return false if either value is undefined or null
       if (!currentTurn || !this.localPlayerId) {
+        console.log('[TURN_CHECK] Missing currentTurn or localPlayerId:', { currentTurn, localPlayerId: this.localPlayerId });
+
+        // If currentTurn is null but we're the host, we might need to initialize the turn
+        const state = store.getState();
+        if (!currentTurn && state.game.hostId === this.localPlayerId) {
+          console.log('[TURN_CHECK] Current turn is null but we are the host, requesting turn initialization');
+
+          // Request current turn from server
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.sendMessage('get_current_turn', {});
+
+            // Also try to set the current turn to the host as a fallback
+            if (state.game.hostId) {
+              console.log('[TURN_CHECK] Setting initial turn to host:', state.game.hostId);
+              store.dispatch(setCurrentPlayer(state.game.hostId));
+
+              // Return true if we're the host, as we're setting ourselves as the current player
+              if (state.game.hostId === this.localPlayerId) {
+                this._cachedTurnResult = true;
+                return true;
+              }
+            }
+          }
+        }
+
         this._cachedTurnResult = false;
         return false;
       }
 
+      // Compare the current turn with the local player ID
+      const isMyTurn = currentTurn === this.localPlayerId;
+
+      console.log('[TURN_CHECK] Turn check result:', {
+        currentTurn,
+        localPlayerId: this.localPlayerId,
+        isMyTurn,
+        gameJustStarted,
+        recentTurnChange
+      });
+
       // Cache and return the result
-      this._cachedTurnResult = currentTurn === this.localPlayerId;
-      return this._cachedTurnResult;
+      this._cachedTurnResult = isMyTurn;
+      return isMyTurn;
     } catch (error) {
+      console.error('[TURN_CHECK] Error in isLocalPlayerTurn:', error);
       this._cachedTurnResult = false;
       return false; // Default to false on error
     }
@@ -4532,7 +4651,11 @@ class SocketService {
     }
 
     // Update the current player in Redux
+    // This will also set lastTurnChangeTimestamp in the reducer
     dispatch(setCurrentPlayer(currentTurn));
+
+    // Explicitly set the lastTurnChangeTimestamp to ensure it's updated
+    dispatch(setLastTurnChangeTimestamp(Date.now()));
 
     // Double-check that the Redux store was updated correctly
     setTimeout(() => {
@@ -4545,6 +4668,9 @@ class SocketService {
 
         // Force update again
         dispatch(setCurrentPlayer(currentTurn));
+
+        // Also update the timestamp again
+        dispatch(setLastTurnChangeTimestamp(Date.now()));
       } else {
         console.log('[TURN_CHANGED] Redux store updated successfully to', currentTurn);
       }

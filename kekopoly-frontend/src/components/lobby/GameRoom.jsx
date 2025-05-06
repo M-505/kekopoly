@@ -901,49 +901,77 @@ const GameRoom = () => {
 
   // Handle player ready status
   const handleToggleReady = () => {
-    if (!currentPlayerId) return;
+    if (!currentPlayerId) {
+      console.error('Cannot toggle ready: No current player ID');
+      return;
+    }
 
     // Toggle ready status
     const isCurrentlyReady = currentPlayer?.isReady || false;
     const newReadyStatus = !isCurrentlyReady;
 
-    console.log(`Toggling ready status for player ${currentPlayerId} to ${newReadyStatus}`);
+    console.log(`[READY_TOGGLE] Toggling ready status for player ${currentPlayerId} from ${isCurrentlyReady} to ${newReadyStatus}`);
 
-    // Update local state (Redux) - dispatching to playerSlice
+    // Create a unique message ID for tracking this specific ready toggle
+    const messageId = `ready_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    // Update local state (Redux) - dispatching to both slices to ensure consistency
     dispatch(setPlayerReady({
       playerId: currentPlayerId,
       isReady: newReadyStatus
     }));
 
-    // Send ready status to server with retry mechanism
-    if (socketService && socketService.socket && socketService.socket.readyState === WebSocket.OPEN) {
-      // First attempt
+    // Send ready status to server with improved retry mechanism
+    const sendReadyMessage = (attempt = 1, maxAttempts = 3) => {
+      if (!socketService || !socketService.socket || socketService.socket.readyState !== WebSocket.OPEN) {
+        console.warn(`[READY_TOGGLE] Cannot send ready status: WebSocket not open (attempt ${attempt})`);
+
+        // Retry if we haven't reached max attempts
+        if (attempt < maxAttempts) {
+          console.log(`[READY_TOGGLE] Will retry in ${attempt * 500}ms (attempt ${attempt}/${maxAttempts})`);
+          setTimeout(() => sendReadyMessage(attempt + 1, maxAttempts), attempt * 500);
+        }
+        return;
+      }
+
+      console.log(`[READY_TOGGLE] Sending player_ready message (attempt ${attempt}/${maxAttempts}, messageId: ${messageId})`);
+
+      // Send with message ID for tracking
       socketService.sendMessage('player_ready', {
         playerId: currentPlayerId,
-        isReady: newReadyStatus
+        isReady: newReadyStatus,
+        messageId: messageId,
+        timestamp: Date.now()
       });
 
-      // Add a retry after a short delay to ensure the message gets through
+      // Request active players to ensure state sync
       setTimeout(() => {
         if (socketService?.socket?.readyState === WebSocket.OPEN) {
-          console.log('Sending player_ready message again to ensure delivery');
-          socketService.sendMessage('player_ready', {
-            playerId: currentPlayerId,
-            isReady: newReadyStatus
-          });
+          console.log(`[READY_TOGGLE] Requesting active players to verify state sync (messageId: ${messageId})`);
+          socketService.sendMessage('get_active_players', { messageId: messageId });
 
-          // Request active players after a longer delay to ensure state sync
+          // Verify our ready state after a delay
           setTimeout(() => {
-            if (socketService?.socket?.readyState === WebSocket.OPEN) {
-              console.log('Requesting active players to sync state');
-              socketService.sendMessage('get_active_players', {});
+            const currentState = store.getState();
+            const playerInStore = currentState.players.players[currentPlayerId];
+            const playerInGameStore = currentState.game.players.find(p => p.id === currentPlayerId);
+
+            console.log(`[READY_TOGGLE] Verification check (messageId: ${messageId}):`);
+            console.log(`- playerSlice ready state: ${playerInStore?.isReady}`);
+            console.log(`- gameSlice ready state: ${playerInGameStore?.isReady}`);
+
+            // If states don't match or don't match expected value, try one more time
+            if ((playerInStore?.isReady !== newReadyStatus || playerInGameStore?.isReady !== newReadyStatus) && attempt < maxAttempts) {
+              console.warn(`[READY_TOGGLE] Ready state verification failed, retrying (attempt ${attempt}/${maxAttempts})`);
+              sendReadyMessage(attempt + 1, maxAttempts);
             }
           }, 1000);
         }
       }, 500);
-    } else {
-      console.warn('Cannot send ready status: WebSocket not open');
-    }
+    };
+
+    // Start the sending process
+    sendReadyMessage();
 
     // Also broadcast via BroadcastChannel for local development
     try {
@@ -952,13 +980,14 @@ const GameRoom = () => {
         type: 'player_ready',
         playerId: currentPlayerId,
         isReady: newReadyStatus,
-        roomId
+        roomId,
+        messageId: messageId
       });
 
       // Clean up after sending
       setTimeout(() => broadcastChannel.close(), 100);
     } catch (err) {
-      console.error('Error broadcasting ready status:', err);
+      console.error('[READY_TOGGLE] Error broadcasting ready status:', err);
     }
   };
 

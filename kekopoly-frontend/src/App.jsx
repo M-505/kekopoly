@@ -37,10 +37,10 @@ function App() {
         currentPath: location.pathname
       });
 
-      // Only use localStorage data if timestamp is recent (last 30 seconds instead of 60)
-      // This reduces the chance of using stale data
+      // Only use localStorage data if timestamp is recent (last 2 minutes)
+      // Increased from 30 seconds to 2 minutes to prevent unnecessary clearing
       const isTimestampRecent = navTimestamp &&
-        (Date.now() - parseInt(navTimestamp, 10) < 30000);
+        (Date.now() - parseInt(navTimestamp, 10) < 120000);
 
       if (storedGameStarted && storedGameId && isTimestampRecent) {
         console.log('[APP] Found recent game state in localStorage');
@@ -161,16 +161,16 @@ function App() {
               storedGameId = localStorage.getItem('kekopoly_game_id');
               navTimestamp = localStorage.getItem('kekopoly_navigation_timestamp');
 
-              // Only consider localStorage data if it's recent (last 30 seconds)
+              // Only consider localStorage data if it's recent (last 2 minutes)
+              // Increased from 30 seconds to 2 minutes to prevent unnecessary clearing
               const isTimestampRecent = navTimestamp &&
-                (Date.now() - parseInt(navTimestamp, 10) < 30000);
+                (Date.now() - parseInt(navTimestamp, 10) < 120000);
 
               if (!isTimestampRecent) {
-                console.log('[ROUTING] Stored game data is stale, clearing localStorage');
-                localStorageGameStarted = false;
-
-                // Clear stale game data
-                clearGameStorageData();
+                console.log('[ROUTING] Stored game data is older than 2 minutes, but still usable');
+                // Don't clear localStorage data automatically, just mark it as not recently updated
+                // This prevents unnecessary clearing that causes re-renders
+                localStorageGameStarted = localStorageGameStarted && storedGameId === window.location.pathname.split('/').pop();
               }
             } catch (e) {
               console.warn('[ROUTING] Error reading localStorage:', e);

@@ -1665,36 +1665,67 @@ func (c *Client) handleMessage(message []byte) {
 			return
 		}
 
+		// Extract optional message ID for tracking/debugging
+		messageId := ""
+		if msgId, ok := msg["messageId"].(string); ok {
+			messageId = msgId
+		}
+
+		// Extract timestamp if available
+		timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+		if ts, ok := msg["timestamp"].(float64); ok {
+			timestamp = int64(ts)
+		}
+
+		c.hub.logger.Infof("[PLAYER_READY] Player %s ready status changed to: %v (messageId: %s, timestamp: %d)",
+			playerId, isReady, messageId, timestamp)
+
 		// --- Update Hub's internal playerInfo cache ---
 		playerInfo := c.hub.getPlayerInfo(c.gameID, playerId)
 		if playerInfo != nil {
 			playerInfo["isReady"] = isReady
+			playerInfo["lastReadyUpdate"] = timestamp // Track when this was last updated
 			c.hub.storePlayerInfo(c.gameID, playerId, playerInfo)
+			c.hub.logger.Infof("[PLAYER_READY] Updated existing player info for %s, isReady=%v", playerId, isReady)
 		} else {
-			c.hub.logger.Warnf("Player info not found for player %s in game %s when handling player_ready. Creating default entry.", playerId, c.gameID)
+			c.hub.logger.Warnf("[PLAYER_READY] Player info not found for player %s in game %s. Creating default entry.", playerId, c.gameID)
 			// Create a default player info map if not found
 			defaultInfo := map[string]interface{}{
-				"id":      playerId,
-				"name":    fmt.Sprintf("Player_%s", playerId[:4]), // Use a default name
-				"isReady": isReady,                                // Set the received ready status
-				"isHost":  false,                                  // Assume not host unless updated later
+				"id":              playerId,
+				"name":            fmt.Sprintf("Player_%s", playerId[:4]), // Use a default name
+				"isReady":         isReady,                                // Set the received ready status
+				"isHost":          false,                                  // Assume not host unless updated later
+				"lastReadyUpdate": timestamp,                              // Track when this was created
 				// Add other necessary default fields if required by frontend
 				"token": "",
 				"emoji": "👤",
 				"color": "gray.500",
 			}
 			c.hub.storePlayerInfo(c.gameID, playerId, defaultInfo) // Store the default info with the correct ready status
+			c.hub.logger.Infof("[PLAYER_READY] Created new player info for %s, isReady=%v", playerId, isReady)
 		}
 		// ---
 
-		// Broadcast player ready status to all clients
-		c.hub.BroadcastToGame(c.gameID, message)
+		// Add message ID to the response if it was provided
+		if messageId != "" {
+			msg["responseToMessageId"] = messageId
+		}
+
+		// Broadcast player ready status to all clients with high priority
+		responseJSON, err := json.Marshal(msg)
+		if err != nil {
+			c.hub.logger.Warnf("[PLAYER_READY] Failed to marshal player_ready response: %v", err)
+			return
+		}
+		// Use BroadcastToGame instead
+		c.hub.BroadcastToGame(c.gameID, responseJSON)
+		c.hub.logger.Infof("[PLAYER_READY] Broadcasted player_ready status to all clients in game %s", c.gameID)
 
 		// After player ready status changes, broadcast updated active players list
 		go func() {
 			// Give a short delay to ensure the player_ready message is processed first
 			time.Sleep(100 * time.Millisecond)
-			// c.hub.logger.Infof("Sending active_players update after player_ready change for player %s", playerId)
+			c.hub.logger.Infof("[PLAYER_READY] Sending active_players update after player_ready change for player %s", playerId)
 			c.handleGetActivePlayers()
 		}()
 		break
