@@ -67,7 +67,7 @@ export const clearGameStorageData = (gameId = null) => {
       }
     }
     
-    console.log(`[STORAGE] Cleared game storage data${gameId ? ` for game ${gameId}` : ''}`);
+    // console.log(`[STORAGE] Cleared game storage data${gameId ? ` for game ${gameId}` : ''}`);
     return true;
   } catch (e) {
     console.error('[STORAGE] Error clearing game storage data:', e);
@@ -103,7 +103,7 @@ export const setGameStorageData = (gameId, started = true, phase = 'playing') =>
     localStorage.setItem('kekopoly_game_phase', phase);
     localStorage.setItem('kekopoly_navigation_timestamp', Date.now().toString());
     
-    console.log(`[STORAGE] Set game storage data for game ${gameId}`);
+    // console.log(`[STORAGE] Set game storage data for game ${gameId}`);
     return true;
   } catch (e) {
     console.error('[STORAGE] Error setting game storage data:', e);

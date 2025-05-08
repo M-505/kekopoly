@@ -8,21 +8,21 @@ import (
 )
 
 func main() {
-	fmt.Println("Testing Solana validator initialization...")
+	// fmt.Println("Testing Solana validator initialization...")
 
 	// Test with empty URL (should default to mainnet)
 	validator := auth.NewSolanaValidator("")
 	if validator == nil {
 		log.Fatal("Failed to create validator with empty URL")
 	}
-	fmt.Println("Validator created successfully with empty URL")
+	// fmt.Println("Validator created successfully with empty URL")
 
 	// Test with explicit mainnet URL
 	validator = auth.NewSolanaValidator("https://api.mainnet-beta.solana.com")
 	if validator == nil {
 		log.Fatal("Failed to create validator with mainnet URL")
 	}
-	fmt.Println("Validator created successfully with mainnet URL")
+	// fmt.Println("Validator created successfully with mainnet URL")
 
 	// Test signature verification with sample data
 	const wallet = "sYP4gSrLd8GZLkTD1qPeSXg52iG6PFndnX7v9i2Y9dT"
@@ -36,5 +36,5 @@ func main() {
 		fmt.Printf("Signature verification result: %v\n", valid)
 	}
 
-	fmt.Println("Test completed")
+	// fmt.Println("Test completed")
 }

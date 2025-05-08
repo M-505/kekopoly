@@ -1,15 +1,83 @@
 import { addPlayer, updatePlayer } from '../playerSlice';
 import { setPlayers } from '../gameSlice';
+import { debounce } from '../../utils/debounceUtils';
 
 /**
- * State Adapter Middleware - Optimized Version
+ * State Adapter Middleware - Optimized Version with Debouncing
  *
  * This middleware synchronizes player data between the gameSlice (array format)
  * and playerSlice (object format) to ensure consistent state across the application.
  *
  * It intercepts specific actions that modify player data and ensures the changes
  * are reflected in both stores, with optimizations to prevent unnecessary updates.
+ *
+ * Debouncing is used to limit the frequency of synchronization operations.
  */
+// Create debounced sync functions to limit update frequency
+// These functions are created outside the middleware to persist between calls
+
+// Debounced function to sync from playerSlice to gameSlice
+const debouncedSyncToGameSlice = debounce((store, playerSlicePlayers) => {
+  try {
+    // Set sync flag to prevent circular updates
+    window._isPlayerSyncInProgress = true;
+
+    // Convert playerSlice players (object) to array format for gameSlice
+    const playersArray = Object.values(playerSlicePlayers).map(player => ({
+      id: player.id,
+      name: player.name || `Player_${player.id.substring(0, 4)}`,
+      token: player.token || player.characterToken || player.emoji || '👤',
+      characterToken: player.characterToken || player.token || player.emoji || '👤',
+      emoji: player.emoji || '👤',
+      color: player.color || 'gray.500',
+      position: player.position !== undefined ? player.position : 0,
+      balance: player.balance !== undefined ? player.balance : 1500,
+      properties: player.properties || [],
+      inJail: player.inJail || false,
+      jailTurns: player.jailTurns || 0,
+      isReady: player.isReady || false,
+      isHost: player.isHost || false,
+      walletAddress: player.walletAddress || '',
+      _tokenInitialized: player._tokenInitialized || false,
+      kekels: player.kekels || {
+        k100: 2,
+        k50: 5,
+        k10: 10,
+      },
+    }));
+
+    // Update the gameSlice with the converted players array
+    // Pass isSync flag in meta to prevent circular updates
+    store.dispatch(setPlayers(playersArray, { isSync: true }));
+
+    // console.log('[SYNC] Debounced sync from playerSlice to gameSlice completed');
+  } finally {
+    // Clear sync flag
+    window._isPlayerSyncInProgress = false;
+  }
+}, 100); // Debounce for 100ms
+
+// Debounced function to sync specific player position
+const debouncedSyncPlayerPosition = debounce((store, playerId, newPosition) => {
+  try {
+    // Set sync flag to prevent circular updates
+    window._isPlayerSyncInProgress = true;
+
+    // Update player position in playerSlice
+    store.dispatch(updatePlayer({
+      playerId,
+      updates: {
+        position: newPosition
+      }
+    }));
+
+    // console.log(`[SYNC] Debounced sync of player ${playerId} position to ${newPosition}`);
+  } finally {
+    // Clear sync flag
+    window._isPlayerSyncInProgress = false;
+  }
+}, 50); // Shorter debounce for position updates (50ms)
+
 const stateAdapterMiddleware = store => next => action => {
   // Process the action first
   const result = next(action);
@@ -32,41 +100,9 @@ const stateAdapterMiddleware = store => next => action => {
 
       // Check if we need to sync (different number of players in stores)
       if (Object.keys(playerSlicePlayers).length !== gameSlicePlayers.length) {
-        try {
-          // Set sync flag to prevent circular updates
-          window._isPlayerSyncInProgress = true;
-
-          // Convert playerSlice players (object) to array format for gameSlice
-          const playersArray = Object.values(playerSlicePlayers).map(player => ({
-            id: player.id,
-            name: player.name || `Player_${player.id.substring(0, 4)}`,
-            token: player.token || player.characterToken || player.emoji || '👤',
-            characterToken: player.characterToken || player.token || player.emoji || '👤',
-            emoji: player.emoji || '👤',
-            color: player.color || 'gray.500',
-            position: player.position !== undefined ? player.position : 0,
-            balance: player.balance !== undefined ? player.balance : 1500,
-            properties: player.properties || [],
-            inJail: player.inJail || false,
-            jailTurns: player.jailTurns || 0,
-            isReady: player.isReady || false,
-            isHost: player.isHost || false,
-            walletAddress: player.walletAddress || '',
-            _tokenInitialized: player._tokenInitialized || false,
-            kekels: player.kekels || {
-              k100: 2,
-              k50: 5,
-              k10: 10,
-            },
-          }));
-
-          // Update the gameSlice with the converted players array
-          // Pass isSync flag in meta to prevent circular updates
-          store.dispatch(setPlayers(playersArray, { isSync: true }));
-        } finally {
-          // Clear sync flag
-          window._isPlayerSyncInProgress = false;
-        }
+        // Use debounced sync function to limit update frequency
+        debouncedSyncToGameSlice(store, playerSlicePlayers);
+        // console.log('[SYNC] Scheduled debounced sync after player added');
       }
       break;
     }
@@ -84,41 +120,9 @@ const stateAdapterMiddleware = store => next => action => {
 
       const { players: playerSlicePlayers } = state.players;
 
-      try {
-        // Set sync flag to prevent circular updates
-        window._isPlayerSyncInProgress = true;
-
-        // Convert playerSlice players (object) to array format for gameSlice
-        const playersArray = Object.values(playerSlicePlayers).map(player => ({
-          id: player.id,
-          name: player.name || `Player_${player.id.substring(0, 4)}`,
-          token: player.token || player.characterToken || player.emoji || '👤',
-          characterToken: player.characterToken || player.token || player.emoji || '👤',
-          emoji: player.emoji || '👤',
-          color: player.color || 'gray.500',
-          position: player.position !== undefined ? player.position : 0,
-          balance: player.balance !== undefined ? player.balance : 1500,
-          properties: player.properties || [],
-          inJail: player.inJail || false,
-          jailTurns: player.jailTurns || 0,
-          isReady: player.isReady || false,
-          isHost: player.isHost || false,
-          walletAddress: player.walletAddress || '',
-          _tokenInitialized: player._tokenInitialized || false,
-          kekels: player.kekels || {
-            k100: 2,
-            k50: 5,
-            k10: 10,
-          },
-        }));
-
-        // Update the gameSlice with the converted players array
-        // Pass isSync flag in meta to prevent circular updates
-        store.dispatch(setPlayers(playersArray, { isSync: true }));
-      } finally {
-        // Clear sync flag
-        window._isPlayerSyncInProgress = false;
-      }
+      // Use debounced sync function to limit update frequency
+      debouncedSyncToGameSlice(store, playerSlicePlayers);
+      // console.log('[SYNC] Scheduled debounced sync after player update');
       break;
     }
 
@@ -211,21 +215,9 @@ const stateAdapterMiddleware = store => next => action => {
     case 'game/movePlayer': {
       const { playerId, newPosition } = action.payload;
 
-      try {
-        // Set sync flag to prevent circular updates
-        window._isPlayerSyncInProgress = true;
-
-        // Update player position in playerSlice
-        store.dispatch(updatePlayer({
-          playerId,
-          updates: {
-            position: newPosition
-          }
-        }));
-      } finally {
-        // Clear sync flag
-        window._isPlayerSyncInProgress = false;
-      }
+      // Use debounced sync function for position updates
+      debouncedSyncPlayerPosition(store, playerId, newPosition);
+      // console.log(`[SYNC] Scheduled debounced sync of player ${playerId} position to ${newPosition}`);
       break;
     }
 

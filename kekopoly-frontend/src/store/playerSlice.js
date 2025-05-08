@@ -25,12 +25,47 @@ const playerSlice = createSlice({
       state.players[playerId] = playerData;
     },
     updatePlayer: (state, action) => {
-      const { playerId, updates } = action.payload;
+      // Handle two different payload formats:
+      // 1. { playerId, updates } - Traditional format
+      // 2. A player object with id property - Direct player object format
 
-      if (state.players[playerId]) {
-        state.players[playerId] = { ...state.players[playerId], ...updates };
+      // Check if the payload is a player object with an id
+      if (action.payload && action.payload.id) {
+        const player = action.payload;
+        const playerId = player.id;
+
+        if (playerId) {
+          // If the player doesn't exist yet, add it
+          if (!state.players[playerId]) {
+            state.players[playerId] = player;
+          } else {
+            // Otherwise update the existing player
+            state.players[playerId] = { ...state.players[playerId], ...player };
+          }
+        } else {
+          console.warn('Attempted to update player with undefined id:', player);
+        }
+      }
+      // Handle the traditional format
+      else if (action.payload && action.payload.playerId) {
+        const { playerId, updates } = action.payload;
+
+        if (playerId) {
+          if (state.players[playerId]) {
+            state.players[playerId] = { ...state.players[playerId], ...updates };
+          } else {
+            // If player doesn't exist but we have updates, create the player
+            if (updates) {
+              state.players[playerId] = updates;
+            } else {
+              console.warn(`Attempted to update non-existent player: ${playerId}`);
+            }
+          }
+        } else {
+          console.warn('Attempted to update player with undefined playerId');
+        }
       } else {
-        console.warn(`Attempted to update non-existent player: ${playerId}`);
+        console.warn('Invalid payload format for updatePlayer:', action.payload);
       }
     },
     updatePlayerPosition: (state, action) => {

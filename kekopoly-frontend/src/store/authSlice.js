@@ -42,7 +42,7 @@ const authSlice = createSlice({
       localStorage.setItem('kekopoly_token', token);
       localStorage.setItem('kekopoly_user', JSON.stringify(action.payload.user));
       
-      console.log('Token saved to Redux and localStorage:', token.substring(0, 30) + '...');
+      // console.log('Token saved to Redux and localStorage:', token.substring(0, 30) + '...');
     },
     connectFailure: (state, action) => {
       state.loading = false;
@@ -64,7 +64,7 @@ export const { connectStart, connectSuccess, connectFailure, disconnect } = auth
 
 // Try authenticating with a specific signature format
 const tryAuthenticate = async (payload) => {
-  console.log('Trying authentication with payload:', { ...payload, signature: payload.signature.substring(0, 20) + '...' });
+  // console.log('Trying authentication with payload:', { ...payload, signature: payload.signature.substring(0, 20) + '...' });
   
   const response = await fetch('/api/v1/auth/wallet-connect', {
     method: 'POST',
@@ -90,7 +90,7 @@ export const connectPhantomWallet = () => async (dispatch) => {
     // Use our utility to connect and sign with Phantom
     const { walletAddress, signature, messageToSign } = await connectAndSignWithPhantom();
     
-    console.log('Successfully connected to wallet and signed message');
+    // console.log('Successfully connected to wallet and signed message');
     
     // Try different signature formats, starting with hex (most common in blockchain)
     const formats = [
@@ -115,7 +115,7 @@ export const connectPhantomWallet = () => async (dispatch) => {
       
       try {
         authResult = await tryAuthenticate(payload);
-        console.log(`Successfully authenticated with ${format.name} signature`);
+        // console.log(`Successfully authenticated with ${format.name} signature`);
         break; // Exit loop on success
       } catch (error) {
         console.warn(`Failed to authenticate with ${format.name} signature:`, error.message);
@@ -135,7 +135,7 @@ export const connectPhantomWallet = () => async (dispatch) => {
     }
     
     // Log token for debugging
-    console.log('Received token:', authResult.token.substring(0, 20) + '...');
+    // console.log('Received token:', authResult.token.substring(0, 20) + '...');
     
     // Store token and user info
     dispatch(connectSuccess({

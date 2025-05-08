@@ -42,7 +42,8 @@ import { FaPlay, FaPlusCircle, FaDice, FaUsers, FaChevronDown, FaSync, FaTrash }
 import { useDispatch, useSelector } from 'react-redux';
 import { setRoomCode } from '../../store/gameSlice';
 import { disconnectPhantomWallet } from '../../store/authSlice';
-import socketService from '../../services/socketService';
+import socketService from '../../services/socket';
+import { apiGet, apiPost } from '../../utils/apiUtils';
 
 // Add function to prompt for password
 const useCleanupPrompt = () => {
@@ -148,9 +149,9 @@ const GameLobby = () => {
   // Load available games effect
   useEffect(() => {
     // Log token for debugging
-    console.log('Token value in GameLobby:', token ? token.substring(0, 20) + '...' : 'null');
-    console.log('Is authenticated:', !!token);
-    console.log('GameLobby component mounted at:', new Date().toISOString());
+    // console.log('Token value in GameLobby:', token ? token.substring(0, 20) + '...' : 'null');
+    // console.log('Is authenticated:', !!token);
+    // console.log('GameLobby component mounted at:', new Date().toISOString());
 
     // Check if we have a valid token
     if (!token) {
@@ -162,13 +163,13 @@ const GameLobby = () => {
 
     // Connect to the lobby socket for real-time game updates
     if (user && user.id) {
-      console.log(`Connecting to lobby socket for user ${user.id} at ${new Date().toISOString()}`);
+      // console.log(`Connecting to lobby socket for user ${user.id} at ${new Date().toISOString()}`);
       socketService.connectToLobby(token, user.id);
 
       // Register callback for new game events
       socketService.onNewGame((newGame) => {
-        console.log(`New game event received in GameLobby at ${new Date().toISOString()}:`, newGame);
-        console.log('Current games before update:', availableGames.map(g => g.id));
+        // console.log(`New game event received in GameLobby at ${new Date().toISOString()}:`, newGame);
+        // console.log('Current games before update:', availableGames.map(g => g.id));
 
         // Update the available games list with the new game
         setAvailableGames(prevGames => {
@@ -176,13 +177,13 @@ const GameLobby = () => {
           const exists = prevGames.some(game => game.id === newGame.id);
 
           if (exists) {
-            console.log(`Game ${newGame.id} already exists, updating`);
+            // console.log(`Game ${newGame.id} already exists, updating`);
             // Replace the existing game with the updated one
             return prevGames.map(game =>
               game.id === newGame.id ? newGame : game
             );
           } else {
-            console.log(`Game ${newGame.id} is new, adding to list`);
+            // console.log(`Game ${newGame.id} is new, adding to list`);
             // Add the new game to the list
             return [...prevGames, newGame];
           }
@@ -202,38 +203,26 @@ const GameLobby = () => {
     // Make fetchGames available globally for debugging and WebSocket callbacks
     window.refreshGameList = refreshGameList;
 
-    // Fetch available games from the API
+    // Fetch available games from the API using our utility function
     const fetchGames = async () => {
-      console.log(`Fetching games from API at ${new Date().toISOString()}`);
+      // console.log(`Fetching games from API at ${new Date().toISOString()}`);
       setIsLoading(true);
       try {
-        // Ensure token is properly formatted
-        const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-        console.log('Making API call with authorization header:', authHeader.substring(0, 30) + '...');
-
-        const response = await fetch('/api/v1/games', {
-          headers: {
-            'Authorization': authHeader
-          }
-        });
-        if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error('Authentication required');
-          }
-          throw new Error('Failed to fetch games');
-        }
-        const data = await response.json();
-        console.log(`API returned ${data.games ? data.games.length : 0} games`);
+        // Use our apiGet utility which handles authentication automatically
+        const data = await apiGet('/api/v1/games');
+        // console.log(`API returned ${data.games ? data.games.length : 0} games`);
 
         // Deduplicate the games before setting state
         const dedupedGames = deduplicateGames(data.games || []);
-        console.log(`After deduplication: ${dedupedGames.length} games`);
+        // console.log(`After deduplication: ${dedupedGames.length} games`);
         setAvailableGames(dedupedGames);
       } catch (error) {
         console.error('Error fetching games:', error);
         toast({
           title: 'Error',
-          description: 'Failed to fetch available games',
+          description: error.message === 'Authentication required'
+            ? 'Authentication required. Please reconnect your wallet.'
+            : 'Failed to fetch available games',
           status: 'error',
           duration: 3000,
           isClosable: true,
@@ -252,7 +241,7 @@ const GameLobby = () => {
     // Set up periodic refresh (every 30 seconds)
     // This helps ensure rooms appear for friends even if WebSocket messages are missed
     const refreshInterval = setInterval(() => {
-      console.log(`Auto-refreshing game list at ${new Date().toISOString()}`);
+      // console.log(`Auto-refreshing game list at ${new Date().toISOString()}`);
       fetchGames();
     }, 30000);
 
@@ -261,11 +250,11 @@ const GameLobby = () => {
       // Check if WebSocket is connected
       if (socketService.lobbySocket) {
         const state = socketService.getLobbySocketStateString();
-        console.log(`WebSocket connection state: ${state}`);
+        // console.log(`WebSocket connection state: ${state}`);
 
         // If the connection is closed or closing, attempt to reconnect
         if (state === "CLOSED" || state === "CLOSING") {
-          console.log("WebSocket connection lost, attempting to reconnect...");
+          // console.log("WebSocket connection lost, attempting to reconnect...");
           socketService.connectToLobby(token, user.id);
         }
       }
@@ -274,7 +263,7 @@ const GameLobby = () => {
     // Cleanup function to disconnect from the lobby socket and clear intervals
     return () => {
       if (socketService) {
-        console.log(`Disconnecting from lobby socket at ${new Date().toISOString()}`);
+        // console.log(`Disconnecting from lobby socket at ${new Date().toISOString()}`);
         socketService.disconnectFromLobby();
       }
       clearInterval(refreshInterval);
@@ -311,34 +300,14 @@ const GameLobby = () => {
     setIsCreatingGame(true);
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      // Production flow - real API only
-      const response = await fetch('/api/v1/games', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          gameName: newGameName,
-          maxPlayers: maxPlayers
-        }),
+      // Use our apiPost utility which handles authentication automatically
+      const data = await apiPost('/api/v1/games', {
+        gameName: newGameName,
+        maxPlayers: maxPlayers
       });
 
       // Log response for debugging
-      console.log('Create game response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required');
-        }
-        throw new Error('Failed to create game');
-      }
-
-      const data = await response.json();
-      console.log('Create game response:', data);
+      // console.log('Create game response:', data);
       const gameId = data.gameId;
 
       // Set room code in Redux
@@ -396,25 +365,11 @@ const GameLobby = () => {
     }
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      // Verify the room code with the API
-      const response = await fetch(`/api/v1/games/${roomCode}`, {
-        headers: {
-          'Authorization': authHeader
-        }
-      });
+      // Use our apiGet utility which handles authentication automatically
+      const gameData = await apiGet(`/api/v1/games/${roomCode}`);
 
       // Log response for debugging
-      console.log('Join by code response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required');
-        }
-        throw new Error('Invalid room code');
-      }
+      // console.log('Join by code response:', gameData);
 
       // Set room code in Redux
       dispatch(setRoomCode(roomCode.toUpperCase()));
@@ -448,28 +403,11 @@ const GameLobby = () => {
     }
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      // Make API call to reset the game
-      const response = await fetch(`/api/v1/games/${gameId}/reset`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({})
-      });
+      // Use our apiPost utility which handles authentication automatically
+      const resetResponse = await apiPost(`/api/v1/games/${gameId}/reset`, {});
 
       // Log response for debugging
-      console.log('Reset game response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required');
-        }
-        throw new Error('Failed to reset game');
-      }
+      // console.log('Reset game response:', resetResponse);
 
       toast({
         title: 'Game Reset',
@@ -508,30 +446,13 @@ const GameLobby = () => {
     }
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      // Make a real API call to join the game
-      const response = await fetch(`/api/v1/games/${gameId}/join`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          walletAddress: user?.walletAddress
-        }),
+      // Use our apiPost utility which handles authentication automatically
+      const joinResponse = await apiPost(`/api/v1/games/${gameId}/join`, {
+        walletAddress: user?.walletAddress
       });
 
       // Log response for debugging
-      console.log('Join game response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error('Authentication required');
-        }
-        throw new Error('Failed to join game');
-      }
+      // console.log('Join game response:', joinResponse);
 
       // Set room code in Redux
       dispatch(setRoomCode(gameId));
@@ -569,38 +490,26 @@ const GameLobby = () => {
   };
 
   const refreshGameList = async () => {
-    console.log(`Manual refresh triggered at ${new Date().toISOString()}`);
+    // console.log(`Manual refresh triggered at ${new Date().toISOString()}`);
     setLoading(true);
     setError(null);
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      const response = await fetch('/api/v1/games', {
-        headers: {
-          'Authorization': authHeader
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch games');
-      }
-
-      const data = await response.json();
-      console.log(`Refresh returned ${data.games ? data.games.length : 0} games`);
+      // Use our apiGet utility which handles authentication automatically
+      const data = await apiGet('/api/v1/games');
+      // console.log(`Refresh returned ${data.games ? data.games.length : 0} games`);
 
       const dedupedGames = deduplicateGames(data.games || []);
-      console.log(`After deduplication: ${dedupedGames.length} games`);
+      // console.log(`After deduplication: ${dedupedGames.length} games`);
 
       // Compare with current games to see what's new
       const currentGameIds = new Set(availableGames.map(game => game.id));
       const newGames = dedupedGames.filter(game => !currentGameIds.has(game.id));
 
       if (newGames.length > 0) {
-        console.log(`Found ${newGames.length} new games during refresh:`, newGames.map(g => g.id));
+        // console.log(`Found ${newGames.length} new games during refresh:`, newGames.map(g => g.id));
       } else {
-        console.log('No new games found during refresh');
+        // console.log('No new games found during refresh');
       }
 
       // Check for updated games (same ID but different player count)
@@ -613,7 +522,7 @@ const GameLobby = () => {
       });
 
       if (updatedGames.length > 0) {
-        console.log(`Found ${updatedGames.length} updated games during refresh`);
+        // console.log(`Found ${updatedGames.length} updated games during refresh`);
       }
 
       setAvailableGames(dedupedGames);
@@ -628,17 +537,17 @@ const GameLobby = () => {
           isClosable: true,
         });
       } else {
-        console.log("Game list refreshed - no changes detected");
+        // console.log("Game list refreshed - no changes detected");
       }
 
       // Check WebSocket connection status
       if (socketService.lobbySocket) {
         const wsState = socketService.getLobbySocketStateString();
-        console.log(`WebSocket connection state after refresh: ${wsState}`);
+        // console.log(`WebSocket connection state after refresh: ${wsState}`);
 
         // If WebSocket is not connected, try to reconnect
         if (wsState !== "OPEN") {
-          console.log("WebSocket not connected, attempting to reconnect...");
+          // console.log("WebSocket not connected, attempting to reconnect...");
           socketService.connectToLobby(token, user.id);
         }
       }
@@ -655,23 +564,9 @@ const GameLobby = () => {
     setLoading(true);
 
     try {
-      // Ensure token is properly formatted
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-
-      const response = await fetch('/api/v1/games/cleanup', {
-        method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to clean up games');
-      }
-
-      const data = await response.json();
-      console.log('Cleanup response:', data);
+      // Use our apiPost utility which handles authentication automatically
+      const data = await apiPost('/api/v1/games/cleanup', {});
+      // console.log('Cleanup response:', data);
 
       toast({
         title: 'Games cleaned up',

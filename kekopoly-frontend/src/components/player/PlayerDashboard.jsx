@@ -1,6 +1,6 @@
 import { Box, Heading, Text, HStack, VStack, Badge, Avatar, Flex, Progress, SimpleGrid } from '@chakra-ui/react';
 import { useSelector } from 'react-redux';
-import socketService from '../../services/socketService';
+import socketService from '../../services/socket';
 
 /**
  * PlayerDashboard component
@@ -47,7 +47,7 @@ const PlayerDashboard = ({ currentPlayer = null, showAllPlayers = false }) => {
       color: 'blue.500'
     }
   };
-  
+
   const currentTurn = 'player1';
 
   // Character token mapping
@@ -68,7 +68,7 @@ const PlayerDashboard = ({ currentPlayer = null, showAllPlayers = false }) => {
     if (isShadowbanned) {
       return <Badge colorScheme="gray">Shadowbanned</Badge>;
     }
-    
+
     switch (status) {
       case 'ACTIVE':
         return <Badge colorScheme="green">Active</Badge>;
@@ -86,7 +86,7 @@ const PlayerDashboard = ({ currentPlayer = null, showAllPlayers = false }) => {
   // Current player dashboard
   const renderCurrentPlayerDashboard = () => {
     if (!currentPlayer) return null;
-    
+
     return (
       <VStack align="stretch" spacing={4}>
         <HStack>
@@ -132,18 +132,18 @@ const PlayerDashboard = ({ currentPlayer = null, showAllPlayers = false }) => {
   // Render all other players
   const renderOtherPlayers = () => {
     if (!showAllPlayers) return null;
-    
+
     return (
       <VStack align="stretch" spacing={2} mt={6}>
         <Heading size="sm">Other Players</Heading>
         {Object.values(players)
           .filter(player => currentPlayer && player.playerId !== currentPlayer.playerId)
           .map(player => (
-            <Flex 
-              key={player.playerId} 
-              p={2} 
-              bg="whiteAlpha.200" 
-              borderRadius="md" 
+            <Flex
+              key={player.playerId}
+              p={2}
+              bg="whiteAlpha.200"
+              borderRadius="md"
               justify="space-between"
               align="center"
             >

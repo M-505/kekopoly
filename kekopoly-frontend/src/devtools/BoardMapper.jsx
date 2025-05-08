@@ -250,11 +250,11 @@ const BoardMapper = () => {
     const leftPercent = (relativeX / boardRect.width) * 100;
     const topPercent = (relativeY / boardRect.height) * 100;
 
-    console.log(`Drop Pos ${position} at:`, {
-        dropPoint, boardRect, 
-        relativeX, relativeY,
-        leftPercent, topPercent
-    });
+    // console.log(`Drop Pos ${position} at:`, {
+    //     dropPoint, boardRect,
+    //     relativeX, relativeY,
+    //     leftPercent, topPercent
+    // });
 
     // Store left/top AND default width/height
     setMappedPositions((prev) => ({

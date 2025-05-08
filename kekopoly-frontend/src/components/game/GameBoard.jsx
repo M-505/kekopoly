@@ -39,16 +39,15 @@ import {
   useDisclosure,
 } from '@chakra-ui/react';
 import { clearGameStorageData } from '../../utils/storageUtils';
-import { log, logError, logWarning } from '../../utils/logger';
+import { log } from '../../utils/logger';
 import { keyframes } from '@emotion/react';
 import { useSelector, useDispatch } from 'react-redux';
 import { HamburgerIcon } from '@chakra-ui/icons';
 import gameBoardImage from '../../assets/new_game_board.png';
 import { boardSpaces as configBoardSpaces } from '../../config/boardConfig';
 import { boardSpaces as modelBoardSpaces, properties } from '../../core/models/boardConfig';
-import { boardCoordinates } from '../../core/models/boardCoordinates';
-import socketService from '../../services/socketService';
-import { movePlayer, updateDiceRoll, clearGameMessages, endTurn, setPlayers, setIsRolling, buyProperty, setCurrentPlayer, setGameStarted, setGamePhase } from '../../store/gameSlice';
+import socketService from '../../services/socket';
+import { movePlayer, updateDiceRoll, endTurn, setPlayers, setIsRolling, buyProperty, setCurrentPlayer, setGameStarted, setGamePhase } from '../../store/gameSlice';
 import { updatePlayer, addPlayer } from '../../store/playerSlice';
 import { FaDiceFive, FaExclamationTriangle, FaArrowCircleRight, FaHome } from 'react-icons/fa';
 
@@ -299,12 +298,7 @@ const getSpaceDataByPosition = (positionIndex) => {
 
 const GameBoard = React.memo(() => {
   // Removed excessive logging
-  const blinkAnimation = keyframes`
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
-  `;
-
+  // Animation for UI elements
   const bounceAnimation = keyframes`
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-5px); }
@@ -315,10 +309,6 @@ const GameBoard = React.memo(() => {
     70% { box-shadow: 0 0 0 10px rgba(0, 128, 0, 0); }
     100% { box-shadow: 0 0 0 0 rgba(0, 128, 0, 0); }
   `;
-
-  const currentPlayerBlink = {
-    animation: `${blinkAnimation} 1.5s infinite`
-  };
 
   const currentTurnIndicator = {
     animation: `${bounceAnimation} 1s infinite`,
@@ -344,13 +334,7 @@ const GameBoard = React.memo(() => {
     hostId
   } = useSelector((state) => state.game || {});
 
-  console.log('[GAMEBOARD] Game state from Redux:', {
-    playerCount: players.length,
-    currentPlayer,
-    gamePhase,
-    boardStateCount: currentBoardState.length,
-    hostId
-  });
+  // Game state from Redux is available in the component
 
   // Add fallback for currentPlayerData
   const currentPlayerData = players.find(p => p.id === currentPlayer) || {};
@@ -364,12 +348,8 @@ const GameBoard = React.memo(() => {
   const [animationStep, setAnimationStep] = useState(0);
   const [animationPath, setAnimationPath] = useState([]);
 
-  // State for tracking selected property
-  const [selectedProperty, setSelectedProperty] = useState(null);
-
   // Ref for the game board container to get actual dimensions
   const boardContainerRef = useRef(null);
-  const [boardDimensions, setBoardDimensions] = useState({ width: 0, height: 0 });
 
   const lobbyPlayers = useSelector(state => state.players.players); // object
   const gamePlayers = useSelector(state => state.game.players); // array
@@ -506,11 +486,7 @@ const GameBoard = React.memo(() => {
 
   // Add useEffect to handle WebSocket connection during transition from game room to game board
   useEffect(() => {
-    console.log('[WEBSOCKET_TRANSITION] GameBoard component mounted, checking WebSocket connection');
-
-    // Log current URL and path for debugging
-    console.log(`[WEBSOCKET_TRANSITION] Current URL: ${window.location.href}`);
-    console.log(`[WEBSOCKET_TRANSITION] Current path: ${window.location.pathname}`);
+    // Handle WebSocket connection during component mount
 
     // Get game ID from URL
     const gameId = window.location.pathname.split('/').pop();
@@ -521,7 +497,7 @@ const GameBoard = React.memo(() => {
       if (timeoutId) {
         clearTimeout(parseInt(timeoutId, 10));
         localStorage.removeItem('kekopoly_game_start_timeout_id');
-        console.log('[WEBSOCKET_TRANSITION] Cleared game start timeout:', timeoutId);
+        // console.log('[WEBSOCKET_TRANSITION] Cleared game start timeout:', timeoutId);
       }
     } catch (e) {
       console.warn('[WEBSOCKET_TRANSITION] Could not clear game start timeout:', e);
@@ -534,23 +510,23 @@ const GameBoard = React.memo(() => {
     // If not found, try room-specific player ID (this is the key used in GameRoom.jsx)
     if (!playerId) {
       playerId = localStorage.getItem(`kekopoly_player_${gameId}`);
-      console.log(`[WEBSOCKET_TRANSITION] Found player ID in room-specific key: ${playerId}`);
+      // console.log(`[WEBSOCKET_TRANSITION] Found player ID in room-specific key: ${playerId}`);
     }
 
     const authToken = localStorage.getItem('kekopoly_token') || localStorage.getItem('kekopoly_auth_token');
 
-    console.log(`[WEBSOCKET_TRANSITION] Game ID from URL: ${gameId}`);
-    console.log(`[WEBSOCKET_TRANSITION] Player ID from localStorage: ${playerId}`);
-    console.log(`[WEBSOCKET_TRANSITION] Auth token available: ${authToken ? 'Yes' : 'No'}`);
+    // console.log(`[WEBSOCKET_TRANSITION] Game ID from URL: ${gameId}`);
+    // console.log(`[WEBSOCKET_TRANSITION] Player ID from localStorage: ${playerId}`);
+    // console.log(`[WEBSOCKET_TRANSITION] Auth token available: ${authToken ? 'Yes' : 'No'}`);
 
     // Check if WebSocket is connected
     const isConnected = socketService?.socket?.readyState === WebSocket.OPEN;
-    console.log(`[WEBSOCKET_TRANSITION] WebSocket connected: ${isConnected}`);
+    // console.log(`[WEBSOCKET_TRANSITION] WebSocket connected: ${isConnected}`);
 
     // Log current player data in both stores
-    console.log('[WEBSOCKET_TRANSITION] Current player data in stores:');
-    console.log('[WEBSOCKET_TRANSITION] lobbyPlayers (playerSlice):', lobbyPlayers);
-    console.log('[WEBSOCKET_TRANSITION] gamePlayers (gameSlice):', gamePlayers);
+    // console.log('[WEBSOCKET_TRANSITION] Current player data in stores:');
+    // console.log('[WEBSOCKET_TRANSITION] lobbyPlayers (playerSlice):', lobbyPlayers);
+    // console.log('[WEBSOCKET_TRANSITION] gamePlayers (gameSlice):', gamePlayers);
 
     // Ensure game state is properly set for playing
     dispatch(setGameStarted(true));
@@ -583,11 +559,11 @@ const GameBoard = React.memo(() => {
 
     // If WebSocket is not connected, establish connection
     if (!isConnected && gameId && playerId && authToken) {
-      console.log('[WEBSOCKET_TRANSITION] WebSocket not connected, establishing connection');
+      // console.log('[WEBSOCKET_TRANSITION] WebSocket not connected, establishing connection');
 
       // Generate a new session ID for this connection
       const sessionId = Math.random().toString(36).substring(2, 15);
-      console.log(`[WEBSOCKET_TRANSITION] Generated new session ID: ${sessionId}`);
+      // console.log(`[WEBSOCKET_TRANSITION] Generated new session ID: ${sessionId}`);
 
       // Store session ID in localStorage
       localStorage.setItem('kekopoly_session_id', sessionId);
@@ -595,14 +571,18 @@ const GameBoard = React.memo(() => {
       // Connect to WebSocket
       socketService.connect(gameId, playerId, authToken)
         .then(() => {
-          console.log('[WEBSOCKET_TRANSITION] WebSocket connection established successfully');
+          // console.log('[WEBSOCKET_TRANSITION] WebSocket connection established successfully');
           setSocketConnected(true);
 
           // Request active players and game state after connection
           setTimeout(() => {
-            console.log('[WEBSOCKET_TRANSITION] Requesting active players and game state');
+            // console.log('[WEBSOCKET_TRANSITION] Requesting active players and game state');
             socketService.sendMessage('get_active_players');
             socketService.sendMessage('get_game_state', { full: true });
+
+            // Start periodic state synchronization
+            // console.log('[WEBSOCKET_TRANSITION] Starting periodic state synchronization');
+            socketService.startPeriodicStateSync();
 
             // Sync player data between stores
             syncPlayerData();
@@ -614,16 +594,20 @@ const GameBoard = React.memo(() => {
 
           // Try again after a short delay
           setTimeout(() => {
-            console.log('[WEBSOCKET_TRANSITION] Retrying WebSocket connection');
+            // console.log('[WEBSOCKET_TRANSITION] Retrying WebSocket connection');
             socketService.connect(gameId, playerId, authToken)
               .then(() => {
-                console.log('[WEBSOCKET_TRANSITION] WebSocket connection established on retry');
+                // console.log('[WEBSOCKET_TRANSITION] WebSocket connection established on retry');
                 setSocketConnected(true);
 
                 // Request active players and game state after connection
                 setTimeout(() => {
                   socketService.sendMessage('get_active_players');
                   socketService.sendMessage('get_game_state', { full: true });
+
+                  // Start periodic state synchronization
+                  // console.log('[WEBSOCKET_TRANSITION] Starting periodic state synchronization on retry');
+                  socketService.startPeriodicStateSync();
 
                   // Sync player data between stores
                   syncPlayerData();
@@ -646,12 +630,16 @@ const GameBoard = React.memo(() => {
         });
     } else if (isConnected) {
       // If WebSocket is already connected, just request active players and game state
-      console.log('[WEBSOCKET_TRANSITION] WebSocket already connected, requesting data');
+      // console.log('[WEBSOCKET_TRANSITION] WebSocket already connected, requesting data');
       setSocketConnected(true);
 
       // Request active players and game state
       socketService.sendMessage('get_active_players');
       socketService.sendMessage('get_game_state', { full: true });
+
+      // Start periodic state synchronization
+      // console.log('[WEBSOCKET_TRANSITION] Starting periodic state synchronization for existing connection');
+      socketService.startPeriodicStateSync();
 
       // Sync player data between stores
       syncPlayerData();
@@ -679,17 +667,17 @@ const GameBoard = React.memo(() => {
   useEffect(() => {
     // If we have players but no current player, request the current turn from the server
     if (players.length > 0 && !currentPlayer) {
-      console.log('[GAMEBOARD] Requesting player data on mount');
+      // console.log('[GAMEBOARD] Requesting player data on mount');
 
       // If we're the host, set the current player to the host
       if (hostId && socketService?.localPlayerId === hostId) {
-        console.log('[GAMEBOARD] Setting current player to host:', hostId);
+        // console.log('[GAMEBOARD] Setting current player to host:', hostId);
         dispatch(setCurrentPlayer(hostId));
       }
 
       // Request current turn from server
       if (socketService?.socket?.readyState === WebSocket.OPEN) {
-        console.log('[GAMEBOARD] Requesting current turn from server');
+        // console.log('[GAMEBOARD] Requesting current turn from server');
         socketService.sendMessage('get_current_turn', {});
 
         // Also request full game state
@@ -797,7 +785,7 @@ const GameBoard = React.memo(() => {
 
           if (gameId && playerId && authToken) {
             socketService.connect(gameId, playerId, authToken)
-              .catch(error => {
+              .catch(() => {
                 // Silently handle error to avoid console spam
               });
           }
@@ -837,7 +825,7 @@ const GameBoard = React.memo(() => {
       purchaseDisclosure.onClose();
     }
     // eslint-disable-next-line
-  }, [currentPlayerData?.position, currentBoardState]);
+  }, [currentPlayerData?.position, currentBoardState, purchaseDisclosure]);
 
   // Handler: Buy property
   const handleBuyProperty = async () => {
@@ -947,9 +935,9 @@ const GameBoard = React.memo(() => {
         const finalGameId = usePreserved ? preservedGameId : gameId;
         const finalPlayerId = usePreserved ? preservedPlayerId : playerId;
 
-        console.log(`[SOCKET] Connection info - URL/Redux: gameId=${gameId}, playerId=${playerId}`);
-        console.log(`[SOCKET] Preserved info: gameId=${preservedGameId}, playerId=${preservedPlayerId}, isPreserved=${isPreserved}, usePreserved=${usePreserved}`);
-        console.log(`[SOCKET] Using: gameId=${finalGameId}, playerId=${finalPlayerId}`);
+        // console.log(`[SOCKET] Connection info - URL/Redux: gameId=${gameId}, playerId=${playerId}`);
+        // console.log(`[SOCKET] Preserved info: gameId=${preservedGameId}, playerId=${preservedPlayerId}, isPreserved=${isPreserved}, usePreserved=${usePreserved}`);
+        // console.log(`[SOCKET] Using: gameId=${finalGameId}, playerId=${finalPlayerId}`);
 
         // Final fallback: Try to get values from any available localStorage keys
         let effectiveFinalGameId = finalGameId;
@@ -977,7 +965,7 @@ const GameBoard = React.memo(() => {
           for (const key of possibleGameIdKeys) {
             const value = localStorage.getItem(key);
             if (value) {
-              console.log(`[SOCKET] Found fallback gameId in localStorage key ${key}: ${value}`);
+              // console.log(`[SOCKET] Found fallback gameId in localStorage key ${key}: ${value}`);
               effectiveFinalGameId = value;
               break;
             }
@@ -987,7 +975,7 @@ const GameBoard = React.memo(() => {
           for (const key of possiblePlayerIdKeys) {
             const value = localStorage.getItem(key);
             if (value) {
-              console.log(`[SOCKET] Found fallback playerId in localStorage key ${key}: ${value}`);
+              // console.log(`[SOCKET] Found fallback playerId in localStorage key ${key}: ${value}`);
               effectiveFinalPlayerId = value;
               break;
             }
@@ -1011,7 +999,7 @@ const GameBoard = React.memo(() => {
         }
 
         // Update the log with our effective values that include fallbacks
-        console.log(`[SOCKET] Connecting to game: ${effectiveFinalGameId} as player: ${effectiveFinalPlayerId}`);
+        // console.log(`[SOCKET] Connecting to game: ${effectiveFinalGameId} as player: ${effectiveFinalPlayerId}`);
 
         // Initialize the socket service if it exists
         if (socketService?.initialize) {
@@ -1031,7 +1019,7 @@ const GameBoard = React.memo(() => {
           return;
         }
 
-        console.log(`[SOCKET] Using token: ${authToken.substring(0, 20)}...`);
+        // console.log(`[SOCKET] Using token: ${authToken.substring(0, 20)}...`);
 
         // Reset navigation flags to ensure proper connection
         socketService.isNavigating = false;
@@ -1041,7 +1029,7 @@ const GameBoard = React.memo(() => {
         if (socketService?.connect) {
           socketService.connect(effectiveFinalGameId, effectiveFinalPlayerId, authToken)
             .then(() => {
-              console.log('[SOCKET] Connection successful');
+              // console.log('[SOCKET] Connection successful');
               setSocketConnected(true);
 
               // Clear preserved connection info after successful connection
@@ -1059,7 +1047,7 @@ const GameBoard = React.memo(() => {
               // Request game state and active players to ensure we're in sync
               setTimeout(() => {
                 if (socketService.socket && socketService.socket.readyState === WebSocket.OPEN) {
-                  console.log('[SOCKET] Requesting game state and active players after connection');
+                  // console.log('[SOCKET] Requesting game state and active players after connection');
                   socketService.sendMessage('get_game_state', { full: true });
                   socketService.sendMessage('get_active_players');
                   socketService.sendMessage('get_current_turn', {});
@@ -1072,7 +1060,7 @@ const GameBoard = React.memo(() => {
 
               // Try again after a short delay if we have preserved connection info
               if (usePreserved) {
-                console.log('[SOCKET] Will try reconnecting again in 1 second with preserved info');
+                // console.log('[SOCKET] Will try reconnecting again in 1 second with preserved info');
                 setTimeout(() => {
                   if (socketService?.connect) {
                     socketService.connect(effectiveFinalGameId, effectiveFinalPlayerId, authToken)
@@ -1089,13 +1077,13 @@ const GameBoard = React.memo(() => {
 
         // Set up connection event listener
         const handleConnect = () => {
-          console.log('[SOCKET] WebSocket connected event received');
+          // console.log('[SOCKET] WebSocket connected event received');
           setSocketConnected(true);
         };
 
         // Set up disconnect event listener
         const handleDisconnect = () => {
-          console.log('[SOCKET] WebSocket disconnected event received');
+          // console.log('[SOCKET] WebSocket disconnected event received');
           setSocketConnected(false);
         };
 
@@ -1106,11 +1094,11 @@ const GameBoard = React.memo(() => {
         // Set up periodic connection check
         const checkConnectionInterval = setInterval(() => {
           const isConnected = socketService?.socket?.readyState === WebSocket.OPEN;
-          console.log(`[SOCKET] Periodic connection check: ${isConnected ? 'Connected' : 'Disconnected'}`);
+          // console.log(`[SOCKET] Periodic connection check: ${isConnected ? 'Connected' : 'Disconnected'}`);
 
           // If disconnected but should be connected, try to reconnect
           if (!isConnected && effectiveFinalGameId && effectiveFinalPlayerId && authToken) {
-            console.log('[SOCKET] Detected disconnection, attempting to reconnect');
+            // console.log('[SOCKET] Detected disconnection, attempting to reconnect');
             socketService.connect(effectiveFinalGameId, effectiveFinalPlayerId, authToken)
               .catch(err => console.error('[SOCKET] Reconnection attempt failed:', err));
           }
@@ -1126,7 +1114,7 @@ const GameBoard = React.memo(() => {
 
           // Check if we're navigating away from the game board
           // If we're just navigating to another page within the app, preserve the connection
-          console.log('[GAMEBOARD] Component unmounting, checking navigation state');
+          // console.log('[GAMEBOARD] Component unmounting, checking navigation state');
 
           // We want to preserve the connection if we're navigating within the app
           // but disconnect if we're leaving the app or refreshing
@@ -1143,13 +1131,13 @@ const GameBoard = React.memo(() => {
               // Also store in standard keys for redundancy
               localStorage.setItem('kekopoly_game_id', effectiveFinalGameId);
               localStorage.setItem('kekopoly_player_id', effectiveFinalPlayerId);
-              console.log('[GAMEBOARD] Stored connection info in localStorage for potential reconnection');
+              // console.log('[GAMEBOARD] Stored connection info in localStorage for potential reconnection');
             } catch (e) {
               console.warn('[GAMEBOARD] Could not store socket preservation info in localStorage:', e);
             }
           }
 
-          console.log(`[GAMEBOARD] Disconnecting socket with preserveForNavigation=${isNavigatingWithinApp}`);
+          // console.log(`[GAMEBOARD] Disconnecting socket with preserveForNavigation=${isNavigatingWithinApp}`);
           if (socketService?.disconnect) {
             socketService.disconnect(isNavigatingWithinApp);
           }
@@ -1166,7 +1154,7 @@ const GameBoard = React.memo(() => {
         });
       }
     } else {
-      console.log('[SOCKET] Socket already connected');
+      // console.log('[SOCKET] Socket already connected');
       setSocketConnected(true);
     }
   }, [toast]);
@@ -1181,7 +1169,7 @@ const GameBoard = React.memo(() => {
     playerDataRequestRef.current = true;
 
     if (socketService && socketService.socket && socketService.socket.readyState === WebSocket.OPEN) {
-      console.log('[GAMEBOARD] Requesting player data on mount');
+      // console.log('[GAMEBOARD] Requesting player data on mount');
 
       // Request game state with full details
       socketService.sendMessage('get_game_state', { full: true });
@@ -1197,7 +1185,7 @@ const GameBoard = React.memo(() => {
         const storedTokenData = localStorage.getItem('kekopoly_player_token_data');
         if (storedTokenData && socketService.localPlayerId) {
           const parsedTokenData = JSON.parse(storedTokenData);
-          console.log('[GAMEBOARD] Found stored player token data:', parsedTokenData);
+          // console.log('[GAMEBOARD] Found stored player token data:', parsedTokenData);
 
           // Find the local player in the players array
           const localPlayer = players.find(p => p.id === socketService.localPlayerId);
@@ -1231,27 +1219,8 @@ const GameBoard = React.memo(() => {
     }
   }, [socketConnected, dispatch, players]);
 
-  // Update board dimensions when container size changes
-  useEffect(() => {
-    if (!boardContainerRef.current) return;
-
-    const updateDimensions = () => {
-      if (boardContainerRef.current) {
-        const { width, height } = boardContainerRef.current.getBoundingClientRect();
-        setBoardDimensions({ width, height });
-      }
-    };
-
-    // Initial update
-    updateDimensions();
-
-    // Update on resize
-    window.addEventListener('resize', updateDimensions);
-
-    return () => {
-      window.removeEventListener('resize', updateDimensions);
-    };
-  }, []);
+  // This useEffect previously updated board dimensions
+  // We've removed it since we're not using the dimensions state anymore
 
   // Use updated coordinates - START is position 1 according to the user
   const startCoords = updatedBoardCoordinates["1"]; // START is at index 1
@@ -1306,14 +1275,13 @@ const GameBoard = React.memo(() => {
 
   // Handle clicking on a property space
   const handlePropertyClick = (positionIndex) => {
-    const space = getSpaceDataByPosition(positionIndex);
-    if (space) {
-      setSelectedProperty(space);
-    }
+    // This function is now just a placeholder for the click handler
+    // The Popover component handles displaying property details
+    // console.log(`Clicked on property at position ${positionIndex}`);
   };
 
-  // Get property details for display
-  const getPropertyDetails = (property) => {
+  // Get property details for display - memoized to prevent recreation on every render
+  const getPropertyDetails = useCallback((property) => {
     if (!property) return null;
 
     let details = [];
@@ -1358,10 +1326,10 @@ const GameBoard = React.memo(() => {
     }
 
     return details;
-  };
+  }, []);
 
-  // Get owner information for a property
-  const getPropertyOwner = (propertyPosition) => {
+  // Get owner information for a property - memoized to prevent recreation on every render
+  const getPropertyOwner = useCallback((propertyPosition) => {
     try {
       // Handle undefined inputs
       if (propertyPosition === undefined || propertyPosition === null) {
@@ -1382,10 +1350,10 @@ const GameBoard = React.memo(() => {
     } catch (error) {
       return null;
     }
-  };
+  }, [currentBoardState, getPlayerById]);
 
-  // Function to get space name by position
-  const getSpaceName = (position) => {
+  // Function to get space name by position - memoized to prevent recreation on every render
+  const getSpaceName = useCallback((position) => {
     try {
       // Handle undefined position
       if (position === undefined || position === null) {
@@ -1397,14 +1365,14 @@ const GameBoard = React.memo(() => {
     } catch (error) {
       return 'Unknown';
     }
-  };
+  }, []);
 
   // Get viewport size for responsive adjustments
   const isMobile = useBreakpointValue({ base: true, md: false });
 
   // Function to animate player movement step by step
   const animatePlayerMovement = (playerId, startPosition, steps, directPosition = null) => {
-    console.log(`[ANIMATION] Starting animation for player ${playerId} from position ${startPosition}, steps: ${steps}, directPosition: ${directPosition}`);
+    // console.log(`[ANIMATION] Starting animation for player ${playerId} from position ${startPosition}, steps: ${steps}, directPosition: ${directPosition}`);
 
     // Default to position 1 (START) if startPosition is undefined
     const currentPosition = startPosition || 1;
@@ -1417,7 +1385,7 @@ const GameBoard = React.memo(() => {
 
     if (directPosition !== null) {
       // Direct movement to a specific position (e.g., going to jail)
-      console.log(`[ANIMATION] Direct movement to position ${directPosition}`);
+      // console.log(`[ANIMATION] Direct movement to position ${directPosition}`);
       // Include starting position for smooth animation
       path.push(currentPosition);
       path.push(directPosition);
@@ -1425,14 +1393,14 @@ const GameBoard = React.memo(() => {
       // We need to handle the board layout correctly
       // The board positions are from 0 to 25 with position 1 being START
       let currentPos = parseInt(currentPosition);
-      console.log(`[ANIMATION] Starting path calculation from position ${currentPos}`);
+      // console.log(`[ANIMATION] Starting path calculation from position ${currentPos}`);
 
       // Generate the path of positions
       for (let i = 0; i <= steps; i++) {
         if (i === 0) {
           // Add current position as first step
           path.push(currentPos);
-          console.log(`[ANIMATION] Path step ${i}: position ${currentPos} (starting position)`);
+          // console.log(`[ANIMATION] Path step ${i}: position ${currentPos} (starting position)`);
           continue;
         }
 
@@ -1442,16 +1410,16 @@ const GameBoard = React.memo(() => {
         // If we go beyond position 25, wrap back to position 1
         if (currentPos > 25) {
           currentPos = 1;
-          console.log(`[ANIMATION] Wrapped around the board to position 1`);
+          // console.log(`[ANIMATION] Wrapped around the board to position 1`);
         }
 
         // Add this position to the path
         path.push(currentPos);
-        console.log(`[ANIMATION] Path step ${i}: position ${currentPos}`);
+        // console.log(`[ANIMATION] Path step ${i}: position ${currentPos}`);
       }
     }
 
-    console.log(`[ANIMATION] Final path:`, path);
+    // console.log(`[ANIMATION] Final path:`, path);
 
     // Set the animation data
     setAnimatingPlayer(playerId);
@@ -1461,11 +1429,11 @@ const GameBoard = React.memo(() => {
     const animateStep = (step) => {
       if (step >= path.length) {
         // Animation complete
-        console.log(`[ANIMATION] Animation complete for player ${playerId}`);
+        // console.log(`[ANIMATION] Animation complete for player ${playerId}`);
 
         // Get the final position
         const finalPosition = path[path.length - 1];
-        console.log(`[ANIMATION] Final position for player ${playerId}: ${finalPosition}`);
+        // console.log(`[ANIMATION] Final position for player ${playerId}: ${finalPosition}`);
 
         // Get the old position for the movement message
         const oldPosition = path[0];
@@ -1473,7 +1441,7 @@ const GameBoard = React.memo(() => {
         // Important: Update the player's position in the prevPlayerPositions ref
         // This prevents the position tracking effect from triggering another animation
         prevPlayerPositions.current[playerId] = finalPosition;
-        console.log(`[ANIMATION] Updated prevPlayerPositions for player ${playerId} to ${finalPosition}`);
+        // console.log(`[ANIMATION] Updated prevPlayerPositions for player ${playerId} to ${finalPosition}`);
 
         // Find the player in the Redux state
         const player = players.find(p => p.id === playerId);
@@ -1481,7 +1449,7 @@ const GameBoard = React.memo(() => {
         // Only dispatch movePlayer if the player's current position doesn't match the final position
         // This prevents unnecessary Redux updates
         if (player && player.position !== finalPosition) {
-          console.log(`[ANIMATION] Dispatching movePlayer for player ${playerId} from ${oldPosition} to ${finalPosition}`);
+          // console.log(`[ANIMATION] Dispatching movePlayer for player ${playerId} from ${oldPosition} to ${finalPosition}`);
           dispatch(movePlayer({
             playerId: playerId,
             newPosition: finalPosition,
@@ -1489,7 +1457,7 @@ const GameBoard = React.memo(() => {
             diceValues: lastRoll.dice || [1, 1]
           }));
         } else {
-          console.log(`[ANIMATION] Player ${playerId} already at position ${finalPosition}, skipping movePlayer dispatch`);
+          // console.log(`[ANIMATION] Player ${playerId} already at position ${finalPosition}, skipping movePlayer dispatch`);
         }
 
         // Clear animation state
@@ -1500,7 +1468,7 @@ const GameBoard = React.memo(() => {
       }
 
       // Update the player's temporary position for animation
-      console.log(`[ANIMATION] Step ${step}: player ${playerId} at position ${path[step]}`);
+      // console.log(`[ANIMATION] Step ${step}: player ${playerId} at position ${path[step]}`);
       setAnimationStep(step);
 
       // Move to next step after delay
@@ -1516,12 +1484,12 @@ const GameBoard = React.memo(() => {
   // Handle the Roll Dice button click
   const handleRollDice = () => {
     // Log current game state for debugging
-    console.log('[DICE] Current game state before roll:', {
-      currentPlayer,
-      localPlayerId: socketService?.localPlayerId,
-      players: players.map(p => ({ id: p.id, name: p.name, position: p.position })),
-      isMyTurn: socketService?.isLocalPlayerTurn?.()
-    });
+    // console.log('[DICE] Current game state before roll:', {
+    //   currentPlayer,
+    //   localPlayerId: socketService?.localPlayerId,
+    //   players: players.map(p => ({ id: p.id, name: p.name, position: p.position })),
+    //   isMyTurn: socketService?.isLocalPlayerTurn?.()
+    // });
 
     try {
       // First, check if socket is connected
@@ -1553,7 +1521,7 @@ const GameBoard = React.memo(() => {
 
                 // Extract the current turn from the response
                 const serverCurrentTurn = data.currentTurn || data.currentPlayer;
-                console.log(`[DICE] Server reports current turn is: ${serverCurrentTurn}`);
+                // console.log(`[DICE] Server reports current turn is: ${serverCurrentTurn}`);
 
                 // Update Redux with the server's current turn
                 if (serverCurrentTurn) {
@@ -1607,7 +1575,7 @@ const GameBoard = React.memo(() => {
 
         // Check if WebSocket is connected before trying to roll dice
         if (socketService.socket && socketService.socket.readyState === WebSocket.OPEN) {
-          console.log('[DICE] Sending roll_dice request to server');
+          // console.log('[DICE] Sending roll_dice request to server');
 
           // Add error handler for dice roll failures
           const handleDiceRollError = (event) => {
@@ -1648,7 +1616,7 @@ const GameBoard = React.memo(() => {
 
           // Add handler for successful dice roll
           const handleDiceRollSuccess = (event) => {
-            console.log('[DICE] Dice roll success event received:', event.detail);
+            // console.log('[DICE] Dice roll success event received:', event.detail);
 
             if (event.detail && event.detail.dice && event.detail.newPosition) {
               const { dice, newPosition, playerId, oldPosition } = event.detail;
@@ -1657,12 +1625,10 @@ const GameBoard = React.memo(() => {
               const player = players.find(p => p.id === playerId);
               if (player) {
                 const currentPosition = oldPosition || player.position || 1;
-                console.log(`[DICE] Player ${playerId} moving from ${currentPosition} to ${newPosition}`);
 
                 // Calculate steps based on the dice roll, not the position difference
                 // This ensures we move the correct number of spaces from the current position
                 const diceTotal = dice[0] + dice[1];
-                console.log(`[DICE] Dice roll: ${dice[0]} + ${dice[1]} = ${diceTotal}`);
 
                 // Animate the movement using the dice total as steps
                 animatePlayerMovement(playerId, currentPosition, diceTotal);
@@ -1679,13 +1645,6 @@ const GameBoard = React.memo(() => {
 
           // Short delay to allow the server to respond with the current turn
           setTimeout(() => {
-            // Get the latest turn information from Redux
-            const latestState = store.getState();
-            const latestCurrentPlayer = latestState.game.currentPlayer;
-            const isStillMyTurn = socketService.localPlayerId === latestCurrentPlayer;
-
-            console.log(`[DICE] Checking turn after delay: currentPlayer=${latestCurrentPlayer}, localPlayer=${socketService?.localPlayerId}, isMyTurn=${isStillMyTurn}`);
-
             // Double-check with the server one more time to be absolutely sure
             socketService.sendMessage('get_current_turn', {});
 
@@ -1693,7 +1652,7 @@ const GameBoard = React.memo(() => {
             setTimeout(() => {
               // Final check if it's still our turn
               if (socketService.isLocalPlayerTurn()) {
-                console.log('[DICE] Final check confirms it is our turn, proceeding with roll');
+                // console.log('[DICE] Final check confirms it is our turn, proceeding with roll');
                 // Call the socket service to roll dice
                 socketService.rollDice();
               } else {
@@ -1703,7 +1662,7 @@ const GameBoard = React.memo(() => {
                 const currentPlayerObj = players.find(p => p.id === finalCurrentPlayer);
                 const currentPlayerName = currentPlayerObj?.name || "another player";
 
-                console.log(`[DICE] Turn changed during delay. Current turn: ${finalCurrentPlayer}, Local player: ${socketService?.localPlayerId}`);
+                // console.log(`[DICE] Turn changed during delay. Current turn: ${finalCurrentPlayer}, Local player: ${socketService?.localPlayerId}`);
 
                 toast({
                   title: "Not your turn",
@@ -1725,7 +1684,7 @@ const GameBoard = React.memo(() => {
           // Set up a timeout to handle potential WebSocket failures
           const wsTimeout = setTimeout(() => {
             if (isRolling) {
-              console.log('[DICE] WebSocket timeout, falling back to local dice roll');
+              // console.log('[DICE] WebSocket timeout, falling back to local dice roll');
               window.removeEventListener('dice-roll-error', handleDiceRollError);
               window.removeEventListener('dice-roll-success', handleDiceRollSuccess);
               handleLocalDiceRoll();
@@ -1741,7 +1700,7 @@ const GameBoard = React.memo(() => {
           };
         } else {
           // WebSocket not connected, use local dice roll
-          console.log('[DICE] WebSocket not connected, using local dice roll');
+          // console.log('[DICE] WebSocket not connected, using local dice roll');
           handleLocalDiceRoll();
           dispatch(setIsRolling(false));
         }
@@ -1754,12 +1713,11 @@ const GameBoard = React.memo(() => {
         const actualCurrentTurn = serverCurrentTurn || currentPlayer;
         const isMyTurn = socketService.localPlayerId === actualCurrentTurn;
 
-        console.log(`[DICE] Turn check after server validation: currentPlayer=${actualCurrentTurn}, localPlayerId=${socketService?.localPlayerId}, isMyTurn=${isMyTurn}`);
+        // console.log(`[DICE] Turn check after server validation: currentPlayer=${actualCurrentTurn}, localPlayerId=${socketService?.localPlayerId}, isMyTurn=${isMyTurn}`);
 
         if (!isMyTurn) {
           const currentPlayerObj = players.find(p => p.id === actualCurrentTurn);
           const currentPlayerName = currentPlayerObj?.name || "another player";
-          console.log(`[DICE] Not player's turn. Current turn: ${actualCurrentTurn} (${currentPlayerName}), Local player: ${socketService?.localPlayerId}`);
 
           toast({
             title: "Not your turn",
@@ -1860,7 +1818,7 @@ const GameBoard = React.memo(() => {
 
           // Animate movement after jail release
           setTimeout(() => {
-            console.log(`[JAIL_RELEASE] Player ${currentPlayerData.id} rolling ${die1} + ${die2} = ${diceTotal} from jail position ${currentPosition}`);
+            // console.log(`[JAIL_RELEASE] Player ${currentPlayerData.id} rolling ${die1} + ${die2} = ${diceTotal} from jail position ${currentPosition}`);
             // Use the dice total directly for steps
             animatePlayerMovement(currentPlayerData.id, currentPosition, diceTotal);
             dispatch(setIsRolling(false));
@@ -1883,7 +1841,7 @@ const GameBoard = React.memo(() => {
       } else {
         // Normal movement animation
         // Use the dice total directly for steps, not the position difference
-        console.log(`[LOCAL_DICE] Player ${currentPlayerData.id} rolling ${die1} + ${die2} = ${diceTotal} from position ${currentPosition}`);
+        // console.log(`[LOCAL_DICE] Player ${currentPlayerData.id} rolling ${die1} + ${die2} = ${diceTotal} from position ${currentPosition}`);
         animatePlayerMovement(currentPlayerData.id, currentPosition, diceTotal);
         dispatch(setIsRolling(false));
       }
@@ -1893,13 +1851,13 @@ const GameBoard = React.memo(() => {
   };
 
   // GameNotification component - displays different message types
-  const GameNotification = ({ message, players }) => {
-    const getPlayerName = (playerId) => {
+  const GameNotification = React.memo(({ message, players }) => {
+    const getPlayerName = useCallback((playerId) => {
       const player = players.find(p => p.id === playerId);
       return player ? player.name : 'Unknown Player';
-    };
+    }, [players]);
 
-    const getMessageContent = () => {
+    const getMessageContent = useCallback(() => {
       switch (message.type) {
         case 'ROLL':
           return (
@@ -2017,7 +1975,7 @@ const GameBoard = React.memo(() => {
             <Text>{message.content}</Text>
           );
       }
-    };
+    }, [message]);
 
     return (
       <Box
@@ -2044,7 +2002,7 @@ const GameBoard = React.memo(() => {
         </Text>
       </Box>
     );
-  };
+  });
 
   // Add this useEffect to animate movement on server-driven position changes
   useEffect(() => {
@@ -2143,12 +2101,12 @@ const GameBoard = React.memo(() => {
         (!uniquePlayers || uniquePlayers.length === 0) &&
         players && Array.isArray(players) && players.length > 0) {
 
-      console.log('[PLAYER_DEBUG] Detected missing players in uniquePlayers but players exist in raw array. Attempting auto-reconnect...');
+      // console.log('[PLAYER_DEBUG] Detected missing players in uniquePlayers but players exist in raw array. Attempting auto-reconnect...');
 
       // Request game state and player information
       const attemptReconnection = () => {
         if (socketService.socket.readyState === WebSocket.OPEN) {
-          console.log('[PLAYER_DEBUG] Sending game state and active players requests');
+          // console.log('[PLAYER_DEBUG] Sending game state and active players requests');
           socketService.sendMessage('get_game_state', {});
           socketService.sendMessage('get_active_players', {});
 
@@ -2167,13 +2125,13 @@ const GameBoard = React.memo(() => {
                 color: parsedTokenData.color || 'gray.500'
               });
 
-              console.log('[PLAYER_DEBUG] Sent stored token data to server during auto-reconnect');
+              // console.log('[PLAYER_DEBUG] Sent stored token data to server during auto-reconnect');
             }
           } catch (e) {
             console.warn('[PLAYER_DEBUG] Error sending token data during auto-reconnect:', e);
           }
         } else {
-          console.log('[PLAYER_DEBUG] Socket not open, attempting to reconnect');
+          // console.log('[PLAYER_DEBUG] Socket not open, attempting to reconnect');
           socketService.connect(socketService.gameId, socketService.playerId, socketService.token);
 
           // Try again after a delay
@@ -2197,20 +2155,20 @@ const GameBoard = React.memo(() => {
       window._kekopolyDebug = window._kekopolyDebug || {};
       window._kekopolyDebug.lastGameMessages = gameMessages;
       window._kekopolyDebug.lastRollResultMsg = lastMsg;
-      console.info('[ROLL_RESULT useEffect] Firing. gameMessages:', gameMessages);
-      console.info('[ROLL_RESULT useEffect] lastMsg:', lastMsg);
+      // console.info('[ROLL_RESULT useEffect] Firing. gameMessages:', gameMessages);
+      // console.info('[ROLL_RESULT useEffect] lastMsg:', lastMsg);
 
       // Extract dice values from the message if available
       let diceValues = [1, 1];
       if (lastMsg.dice && Array.isArray(lastMsg.dice) && lastMsg.dice.length === 2) {
         diceValues = lastMsg.dice;
-        console.info('[ROLL_RESULT useEffect] Using dice values from message:', diceValues);
+        // console.info('[ROLL_RESULT useEffect] Using dice values from message:', diceValues);
       } else if (lastMsg.content) {
         // Try to extract dice values from content string
         const diceMatch = lastMsg.content.match(/rolled (\d+) and (\d+)/);
         if (diceMatch && diceMatch.length === 3) {
           diceValues = [parseInt(diceMatch[1]), parseInt(diceMatch[2])];
-          console.info('[ROLL_RESULT useEffect] Extracted dice values from content:', diceValues);
+          // console.info('[ROLL_RESULT useEffect] Extracted dice values from content:', diceValues);
         }
       }
 
@@ -2222,7 +2180,7 @@ const GameBoard = React.memo(() => {
       }));
 
       toast.close(toastId); // Close any previous with this ID
-      console.info('[ROLL_RESULT useEffect] Showing toast for dice roll:', lastMsg.content);
+      // console.info('[ROLL_RESULT useEffect] Showing toast for dice roll:', lastMsg.content);
       toast({
         id: toastId,
         title: 'Dice Roll',
@@ -2400,31 +2358,37 @@ const GameBoard = React.memo(() => {
                           <PopoverContent width="auto" maxW={isMobile ? "200px" : "250px"}>
                             <PopoverArrow />
                             <PopoverCloseButton />
-                            <PopoverHeader fontWeight="bold" bg={space.color && `${space.color}.100`}>
+                            <PopoverHeader fontWeight="bold" bg={space.color ? `${space.color}.100` : "gray.100"}>
                               {space.name}
                             </PopoverHeader>
                             <PopoverBody>
                               <VStack align="start" spacing={2}>
-                                {getPropertyDetails(space)?.map((detail, idx) => (
-                                  <HStack key={idx} width="100%" justifyContent="space-between">
-                                    <Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{detail.label}:</Text>
-                                    <Text fontSize={isMobile ? "xs" : "sm"}>{detail.value}</Text>
-                                  </HStack>
-                                ))}
+                                {useMemo(() => {
+                                  const details = getPropertyDetails(space) || [];
+                                  return details.map((detail, idx) => (
+                                    <HStack key={idx} width="100%" justifyContent="space-between">
+                                      <Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>{detail.label}:</Text>
+                                      <Text fontSize={isMobile ? "xs" : "sm"}>{detail.value}</Text>
+                                    </HStack>
+                                  ));
+                                }, [space, isMobile])}
 
                                 {/* Owner information if applicable */}
                                 {space.propertyId && (
                                   <Box width="100%" mt={2} pt={2} borderTopWidth="1px">
                                     <HStack justifyContent="space-between">
                                       <Text fontWeight="semibold" fontSize={isMobile ? "xs" : "sm"}>Owner:</Text>
-                                      {getPropertyOwner(space.position) ? (
-                                        <HStack>
-                                          <Box w={3} h={3} borderRadius="full" bg={getPropertyOwner(space.position).color} />
-                                          <Text fontSize={isMobile ? "xs" : "sm"}>{getPropertyOwner(space.position).name}</Text>
-                                        </HStack>
-                                      ) : (
-                                        <Text color="gray.500" fontSize={isMobile ? "xs" : "sm"}>Unowned</Text>
-                                      )}
+                                      {useMemo(() => {
+                                        const owner = getPropertyOwner(space.position);
+                                        return owner ? (
+                                          <HStack>
+                                            <Box w={3} h={3} borderRadius="full" bg={owner.color} />
+                                            <Text fontSize={isMobile ? "xs" : "sm"}>{owner.name}</Text>
+                                          </HStack>
+                                        ) : (
+                                          <Text color="gray.500" fontSize={isMobile ? "xs" : "sm"}>Unowned</Text>
+                                        );
+                                      }, [space.position, currentBoardState])}
                                     </HStack>
                                   </Box>
                                 )}
@@ -2675,7 +2639,7 @@ const GameBoard = React.memo(() => {
                                     onClick={() => {
                                         // Force reconnection to the game
                                         if (socketService) {
-                                            console.log('[PLAYER_DEBUG] Forcing reconnection to game');
+                                            // console.log('[PLAYER_DEBUG] Forcing reconnection to game');
 
                                             // First try to reconnect the socket
                                             if (socketService.socket && socketService.socket.readyState !== WebSocket.OPEN) {
@@ -2732,7 +2696,7 @@ const GameBoard = React.memo(() => {
                                         colorScheme="blue"
                                         mt={2}
                                         onClick={() => {
-                                            console.log('[PLAYER_DEBUG] Auto-fix: Force adding all players to Redux');
+                                            // console.log('[PLAYER_DEBUG] Auto-fix: Force adding all players to Redux');
                                             players.forEach(player => {
                                                 if (player && player.id) {
                                                     dispatch(addPlayer({
@@ -2833,7 +2797,7 @@ const GameBoard = React.memo(() => {
                         const latestCurrentPlayer = latestState.game.currentPlayer;
                         const isStillMyTurn = socketService.localPlayerId === latestCurrentPlayer;
 
-                        console.log(`[DICE_BUTTON] Final turn check: currentPlayer=${latestCurrentPlayer}, localPlayer=${socketService.localPlayerId}, isMyTurn=${isStillMyTurn}`);
+                        // console.log(`[DICE_BUTTON] Final turn check: currentPlayer=${latestCurrentPlayer}, localPlayer=${socketService.localPlayerId}, isMyTurn=${isStillMyTurn}`);
 
                         if (isStillMyTurn) {
                           // It's definitely our turn, proceed with the roll
@@ -2854,7 +2818,7 @@ const GameBoard = React.memo(() => {
                       }, 200);
                     } else {
                       // Socket not connected, use local dice roll
-                      console.log('[DICE_BUTTON] Socket not connected, using local dice roll');
+                      // console.log('[DICE_BUTTON] Socket not connected, using local dice roll');
                       handleLocalDiceRoll();
                     }
                   }}
@@ -2913,55 +2877,61 @@ const GameBoard = React.memo(() => {
 
           <TabPanel key="players-tab">
             <Box p={4}>
-              {players.map((player, index) => (
-                <HStack key={`player-${player.id}-${index}`} justify="space-between" p={4} bg="gray.50" borderRadius="md" mb={2}>
-                  <HStack>
-                    <Box w={3} h={3} borderRadius="full" bg={player.color} />
-                    <Text>{player.name}</Text>
+              {useMemo(() => {
+                return players.map((player, index) => (
+                  <HStack key={`player-${player.id}-${index}`} justify="space-between" p={4} bg="gray.50" borderRadius="md" mb={2}>
+                    <HStack>
+                      <Box w={3} h={3} borderRadius="full" bg={player.color} />
+                      <Text>{player.name}</Text>
+                    </HStack>
+                    <Text>{player.balance} Kekels</Text>
                   </HStack>
-                  <Text>{player.balance} Kekels</Text>
-                </HStack>
-              ))}
+                ));
+              }, [players])}
             </Box>
           </TabPanel>
 
           <TabPanel key="properties-tab" flex={1}>
             <VStack p={4} align="stretch" spacing={4}>
-              {ownableSpaces.map(spaceConfig => {
-                const propertyData = properties[spaceConfig.propertyId];
-                const owner = getPropertyOwner(spaceConfig.position);
-                const isMortgaged = currentBoardState.find(s => s.id === spaceConfig.position)?.mortgaged;
+              {useMemo(() => {
+                return ownableSpaces.map(spaceConfig => {
+                  const propertyData = properties[spaceConfig.propertyId];
+                  const owner = getPropertyOwner(spaceConfig.position);
+                  const isMortgaged = currentBoardState.find(s => s.id === spaceConfig.position)?.mortgaged;
 
-                return (
-                  <Box key={spaceConfig.position} p={4} bg="gray.50" borderRadius="md" borderWidth="1px">
-                    <HStack justify="space-between">
-                      <Text fontWeight="bold" color={propertyData?.group || 'black'}>{spaceConfig.name}</Text>
-                      <Text fontSize="sm">Price: {propertyData?.cost || 0} Kekels</Text>
-                    </HStack>
-                    <Divider my={2} />
-                    <HStack justify="space-between">
-                      <Text fontSize="sm">Owner:</Text>
-                      {owner ? (
-                        <HStack>
-                           <Box w={3} h={3} borderRadius="full" bg={owner.color || 'gray.300'} />
-                           <Text fontSize="sm">{owner.name}</Text>
-                        </HStack>
-                      ) : (
-                        <Text fontSize="sm" color="gray.500">Unowned</Text>
-                      )}
-                      {isMortgaged && <Badge colorScheme="red">Mortgaged</Badge>}
-                    </HStack>
-                  </Box>
-                );
-              })}
+                  return (
+                    <Box key={spaceConfig.position} p={4} bg="gray.50" borderRadius="md" borderWidth="1px">
+                      <HStack justify="space-between">
+                        <Text fontWeight="bold" color={propertyData?.group || 'black'}>{spaceConfig.name}</Text>
+                        <Text fontSize="sm">Price: {propertyData?.cost || 0} Kekels</Text>
+                      </HStack>
+                      <Divider my={2} />
+                      <HStack justify="space-between">
+                        <Text fontSize="sm">Owner:</Text>
+                        {owner ? (
+                          <HStack>
+                             <Box w={3} h={3} borderRadius="full" bg={owner.color || 'gray.300'} />
+                             <Text fontSize="sm">{owner.name}</Text>
+                          </HStack>
+                        ) : (
+                          <Text fontSize="sm" color="gray.500">Unowned</Text>
+                        )}
+                        {isMortgaged && <Badge colorScheme="red">Mortgaged</Badge>}
+                      </HStack>
+                    </Box>
+                  );
+                });
+              }, [ownableSpaces, currentBoardState, getPropertyOwner])}
             </VStack>
           </TabPanel>
 
           <TabPanel key="log-tab">
             <Box p={4}>
-              {gameMessages.map((message, index) => (
-                <GameNotification key={index} message={message} players={players} />
-              ))}
+              {useMemo(() => {
+                return gameMessages.map((message, index) => (
+                  <GameNotification key={index} message={message} players={players} />
+                ));
+              }, [gameMessages, players])}
             </Box>
           </TabPanel>
         </TabPanels>
@@ -2974,32 +2944,39 @@ const GameBoard = React.memo(() => {
           <ModalHeader>Buy Property</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            {purchaseProperty && (
-              <VStack align="start" spacing={3}>
-                <Text fontWeight="bold" fontSize="lg">{purchaseProperty.name}</Text>
+            {purchaseProperty && useMemo(() => {
+              const propertyGroup = properties[purchaseProperty.propertyId]?.group || "gray";
+              const bgColor = `${propertyGroup}.50`;
+              const borderColor = `${propertyGroup}.500`;
+              const cost = properties[purchaseProperty.propertyId]?.cost || 0;
+              const baseRent = properties[purchaseProperty.propertyId]?.rent?.[0] || 0;
 
-                {/* Property details */}
-                <Box
-                  p={3}
-                  bg={properties[purchaseProperty.propertyId]?.group ? `${properties[purchaseProperty.propertyId].group}.50` : "gray.50"}
-                  borderRadius="md"
-                  w="100%"
-                  borderLeft="8px solid"
-                  borderLeftColor={properties[purchaseProperty.propertyId]?.group ? `${properties[purchaseProperty.propertyId].group}.500` : "gray.500"}
-                >
-                  <Text fontSize="lg" fontWeight="bold" mb={2}>
-                    Price: <b>{properties[purchaseProperty.propertyId]?.cost || 0} Kekels</b>
-                  </Text>
+              return (
+                <VStack align="start" spacing={3}>
+                  <Text fontWeight="bold" fontSize="lg">{purchaseProperty.name}</Text>
 
-                  <HStack justify="space-between" mb={1}>
-                    <Text>Base Rent:</Text>
-                    <Text fontWeight="bold">{properties[purchaseProperty.propertyId]?.rent?.[0] || 0} Kekels</Text>
-                  </HStack>
+                  {/* Property details */}
+                  <Box
+                    p={3}
+                    bg={bgColor}
+                    borderRadius="md"
+                    w="100%"
+                    borderLeft="8px solid"
+                    borderLeftColor={borderColor}
+                  >
+                    <Text fontSize="lg" fontWeight="bold" mb={2}>
+                      Price: <b>{cost} Kekels</b>
+                    </Text>
+
+                    <HStack justify="space-between" mb={1}>
+                      <Text>Base Rent:</Text>
+                      <Text fontWeight="bold">{baseRent} Kekels</Text>
+                    </HStack>
 
                   <HStack justify="space-between" mb={1}>
                     <Text>Color Group:</Text>
-                    <Badge colorScheme={properties[purchaseProperty.propertyId]?.group || "gray"}>
-                      {properties[purchaseProperty.propertyId]?.group || 'N/A'}
+                    <Badge colorScheme={propertyGroup}>
+                      {propertyGroup || 'N/A'}
                     </Badge>
                   </HStack>
 
@@ -3020,7 +2997,8 @@ const GameBoard = React.memo(() => {
                   </HStack>
                 )}
               </VStack>
-            )}
+              );
+            }, [purchaseProperty, properties, currentPlayerData])}
           </ModalBody>
           <ModalFooter>
             <Button colorScheme="green" mr={3} onClick={handleBuyProperty} isLoading={isBuying} isDisabled={isBuying}>

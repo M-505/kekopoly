@@ -29,13 +29,13 @@ function App() {
       const forceRedirect = localStorage.getItem('kekopoly_force_redirect') === 'true';
       const navTimestamp = localStorage.getItem('kekopoly_navigation_timestamp');
 
-      console.log('[APP] Checking localStorage for game state:', {
-        storedGameStarted,
-        storedGameId,
-        forceRedirect,
-        navTimestamp,
-        currentPath: location.pathname
-      });
+      // console.log('[APP] Checking localStorage for game state:', {
+      //   storedGameStarted,
+      //   storedGameId,
+      //   forceRedirect,
+      //   navTimestamp,
+      //   currentPath: location.pathname
+      // });
 
       // Only use localStorage data if timestamp is recent (last 2 minutes)
       // Increased from 30 seconds to 2 minutes to prevent unnecessary clearing
@@ -43,7 +43,7 @@ function App() {
         (Date.now() - parseInt(navTimestamp, 10) < 120000);
 
       if (storedGameStarted && storedGameId && isTimestampRecent) {
-        console.log('[APP] Found recent game state in localStorage');
+        // console.log('[APP] Found recent game state in localStorage');
 
         // Before navigating, verify the game exists by making an API call
         const verifyGameExists = async () => {
@@ -86,7 +86,7 @@ function App() {
 
         // If we're not already on the game page and forceRedirect is set
         if (!location.pathname.includes('/game/') && (forceRedirect || !location.pathname.includes('/room/'))) {
-          console.log(`[APP] Checking if game ${storedGameId} exists before navigation`);
+          // console.log(`[APP] Checking if game ${storedGameId} exists before navigation`);
 
           // Clear the force redirect flag
           localStorage.removeItem('kekopoly_force_redirect');
@@ -94,7 +94,7 @@ function App() {
           // Verify the game exists before navigating
           verifyGameExists().then(gameExists => {
             if (gameExists) {
-              console.log(`[APP] Game ${storedGameId} exists, navigating`);
+              // console.log(`[APP] Game ${storedGameId} exists, navigating`);
               // Navigate to the game
               navigate(`/game/${storedGameId}`);
             } else {
@@ -113,7 +113,7 @@ function App() {
   }, [navigate, dispatch, location.pathname]);
 
   // Log game state for debugging
-  console.log('App.jsx - Current game state:', { gameStarted, gamePhase });
+  // console.log('App.jsx - Current game state:', { gameStarted, gamePhase });
 
   // Get the previous location if redirected from protected route
   const from = location.state?.from?.pathname || '/';
@@ -140,12 +140,12 @@ function App() {
 
       <Route path="/game/:gameId" element={
         <ProtectedRoute>
-          {console.log('[ROUTING] Game route accessed, gameStarted:', gameStarted, 'gamePhase:', gamePhase)}
+          {/* {console.log('[ROUTING] Game route accessed, gameStarted:', gameStarted, 'gamePhase:', gamePhase)} */}
           {/* Force re-evaluation of game state from Redux store */}
           {(() => {
             // Get the latest state directly from the store
             const latestState = store.getState().game;
-            console.log('[ROUTING] Latest Redux game state:', latestState);
+            // console.log('[ROUTING] Latest Redux game state:', latestState);
 
             // Use multiple indicators to determine if game is active
             const effectiveGameStarted = gameStarted || latestState.gameStarted;
@@ -167,7 +167,7 @@ function App() {
                 (Date.now() - parseInt(navTimestamp, 10) < 120000);
 
               if (!isTimestampRecent) {
-                console.log('[ROUTING] Stored game data is older than 2 minutes, but still usable');
+                // console.log('[ROUTING] Stored game data is older than 2 minutes, but still usable');
                 // Don't clear localStorage data automatically, just mark it as not recently updated
                 // This prevents unnecessary clearing that causes re-renders
                 localStorageGameStarted = localStorageGameStarted && storedGameId === window.location.pathname.split('/').pop();
@@ -176,11 +176,11 @@ function App() {
               console.warn('[ROUTING] Error reading localStorage:', e);
             }
 
-            console.log('[ROUTING] Effective game state:', {
-              effectiveGameStarted,
-              effectiveGamePhase,
-              localStorageGameStarted
-            });
+            // console.log('[ROUTING] Effective game state:', {
+            //   effectiveGameStarted,
+            //   effectiveGamePhase,
+            //   localStorageGameStarted
+            // });
 
             // Enhanced condition that checks multiple indicators
             // Only render game board if game phase is explicitly 'playing'
@@ -189,7 +189,7 @@ function App() {
               localStorageGameStarted;
 
             if (shouldRenderGameBoard) {
-              console.log('[ROUTING] Rendering GameBoard component');
+              // console.log('[ROUTING] Rendering GameBoard component');
 
               // Get the gameId from the URL
               const gameId = window.location.pathname.split('/').pop();
@@ -202,7 +202,7 @@ function App() {
 
               return <GameBoard />;
             } else {
-              console.log('[ROUTING] Game not started, redirecting to home');
+              // console.log('[ROUTING] Game not started, redirecting to home');
               return <Navigate to="/" />;
             }
           })()}

@@ -86,7 +86,6 @@ const gameSlice = createSlice({
     // Set the last turn change timestamp explicitly
     setLastTurnChangeTimestamp: (state, action) => {
       state.lastTurnChangeTimestamp = action.payload;
-      console.log(`[TURN_CHANGE] Last turn change timestamp set to ${action.payload}`);
     },
     // Force update the turn state (used for synchronization)
     forceTurnUpdate: (state, action) => {
@@ -94,7 +93,6 @@ const gameSlice = createSlice({
       if (state.currentPlayer !== action.payload) {
         state.currentPlayer = action.payload;
         state.lastTurnChangeTimestamp = Date.now();
-        console.log(`[TURN_CHANGE] Current player force-changed to ${action.payload}, timestamp updated`);
       } else {
         state.currentPlayer = action.payload;
       }
@@ -121,8 +119,7 @@ const gameSlice = createSlice({
         },
       });
 
-      // Log player added for debugging
-      console.log(`[GAME_SLICE] Player added:`, state.players[state.players.length - 1]);
+      // Player added to game state
     },
     removePlayer: (state, action) => {
       state.players = state.players.filter(player => player.id !== action.payload);
@@ -132,7 +129,6 @@ const gameSlice = createSlice({
       if (state.currentPlayer !== action.payload) {
         state.currentPlayer = action.payload;
         state.lastTurnChangeTimestamp = Date.now();
-        console.log(`[TURN_CHANGE] Current player changed to ${action.payload}, timestamp updated`);
       } else {
         state.currentPlayer = action.payload;
       }
@@ -264,7 +260,7 @@ const gameSlice = createSlice({
       // Use provided timestamp or generate a new one
       const timestamp = action.payload.timestamp || Date.now();
 
-      console.log('[DICE_REDUX] Updating dice roll with values:', diceValues, 'timestamp:', timestamp);
+      // Update dice roll with values and timestamp
 
       // Update the dice roll state with timestamp
       state.diceRoll = diceValues;
@@ -300,7 +296,7 @@ const gameSlice = createSlice({
         return;
       }
 
-      console.log('[DICE_REDUX] Player rolling:', rollingPlayer.name, 'isDoubles:', isDoubles);
+      // Process dice roll for player
 
       if (isDoubles) {
         state.consecutiveDoubles += 1;
@@ -414,10 +410,8 @@ const gameSlice = createSlice({
         const nextIndex = (currentIndex + 1) % state.players.length;
         const nextPlayer = state.players[nextIndex];
         if (nextPlayer) {
-          const previousPlayer = state.currentPlayer;
           state.currentPlayer = nextPlayer.id;
           state.lastTurnChangeTimestamp = timestamp;
-          console.log(`[TURN_CHANGE] Turn ended, changing from ${previousPlayer} to ${nextPlayer.id}, timestamp updated`);
 
           state.gameMessages.unshift({
             type: 'TURN_CHANGE',

@@ -815,6 +815,50 @@ func (h *Hub) BroadcastToGame(gameID string, message []byte) {
 	}
 }
 
+// BroadcastToGameWithPriority sends a message to all clients in a game with specified priority
+func (h *Hub) BroadcastToGameWithPriority(gameID string, message []byte, priority string) {
+	// Get all clients for this game
+	h.clientsMutex.RLock()
+	defer h.clientsMutex.RUnlock()
+
+	if gamePlayers, ok := h.clients[gameID]; ok {
+		for playerID, client := range gamePlayers {
+			// Send to each client with the specified priority
+			switch priority {
+			case PriorityHigh:
+				select {
+				case client.highPriorityQueue <- message:
+					// Message sent successfully
+				default:
+					h.logger.Warnf("Failed to send high priority message to player %s (buffer full)", playerID)
+				}
+			case PriorityNormal:
+				select {
+				case client.normalPriorityQueue <- message:
+					// Message sent successfully
+				default:
+					h.logger.Warnf("Failed to send normal priority message to player %s (buffer full)", playerID)
+				}
+			case PriorityLow:
+				select {
+				case client.lowPriorityQueue <- message:
+					// Message sent successfully
+				default:
+					h.logger.Warnf("Failed to send low priority message to player %s (buffer full)", playerID)
+				}
+			default:
+				// Default to normal priority
+				select {
+				case client.normalPriorityQueue <- message:
+					// Message sent successfully
+				default:
+					h.logger.Warnf("Failed to send message to player %s (buffer full)", playerID)
+				}
+			}
+		}
+	}
+}
+
 // BroadcastCompleteState broadcasts the complete game state to all clients in a game
 func (h *Hub) BroadcastCompleteState(gameID string, game *models.Game) {
 	if game == nil {
@@ -1354,13 +1398,20 @@ func (c *Client) handleMessage(message []byte) {
 		// Log the dice roll request
 		c.hub.logger.Infof("Dice roll request received from player %s in game %s", c.playerID, c.gameID)
 
+		// Extract request ID if present
+		requestID, _ := msg["requestId"].(string)
+		if requestID != "" {
+			c.hub.logger.Infof("Dice roll request ID: %s from player %s", requestID, c.playerID)
+		}
+
 		// First, check if it's this player's turn by getting the current game state
 		game, err := c.hub.gameManager.GetGame(c.gameID)
 		if err != nil {
 			c.hub.logger.Errorf("Failed to get game state: %v", err)
 			errorMsg := map[string]interface{}{
-				"type":    "error",
-				"message": fmt.Sprintf("Failed to get game state: %v", err),
+				"type":      "error",
+				"message":   fmt.Sprintf("Failed to get game state: %v", err),
+				"requestId": requestID,
 			}
 			errorJSON, _ := json.Marshal(errorMsg)
 			c.hub.SendToPlayerWithPriority(c.gameID, c.playerID, errorJSON, PriorityHigh)
@@ -1374,6 +1425,7 @@ func (c *Client) handleMessage(message []byte) {
 				"type":        "error",
 				"message":     "Not your turn",
 				"currentTurn": game.CurrentTurn,
+				"requestId":   requestID,
 			}
 			errorJSON, _ := json.Marshal(errorMsg)
 			c.hub.SendToPlayerWithPriority(c.gameID, c.playerID, errorJSON, PriorityHigh)
@@ -1383,12 +1435,17 @@ func (c *Client) handleMessage(message []byte) {
 		// Update the game info cache with the current turn information
 		c.hub.updateGameInfoCache(c.gameID)
 
-		// Create a roll dice action
+		// Create a roll dice action with the request ID in the payload
+		payload := map[string]interface{}{
+			"requestId": requestID,
+			"timestamp": time.Now().UnixNano(),
+		}
+
 		action := models.GameAction{
 			Type:      models.ActionTypeRollDice,
 			PlayerID:  c.playerID,
 			GameID:    c.gameID,
-			Payload:   nil, // No payload needed for dice roll
+			Payload:   payload,
 			Timestamp: time.Now(),
 		}
 
@@ -1516,6 +1573,16 @@ func (c *Client) handleMessage(message []byte) {
 			c.hub.logger.Infof("No dice values found in Redis, using random values for player %s: %d and %d", c.playerID, dice1, dice2)
 		}
 
+		// Extract the request ID from the action payload if available
+		var diceRequestID string
+		if action.Payload != nil {
+			if payload, ok := action.Payload.(map[string]interface{}); ok {
+				if reqID, ok := payload["requestId"].(string); ok {
+					diceRequestID = reqID
+				}
+			}
+		}
+
 		// Create a response message with the dice roll result
 		response := map[string]interface{}{
 			"type":      "dice_rolled",
@@ -1527,6 +1594,8 @@ func (c *Client) handleMessage(message []byte) {
 			"dice":  []int{dice1, dice2},
 			"dice1": dice1,
 			"dice2": dice2,
+			// Include the request ID if available
+			"requestId": diceRequestID,
 		}
 
 		// Marshal to JSON
@@ -1717,14 +1786,15 @@ func (c *Client) handleMessage(message []byte) {
 			c.hub.logger.Warnf("[PLAYER_READY] Failed to marshal player_ready response: %v", err)
 			return
 		}
-		// Use BroadcastToGame instead
-		c.hub.BroadcastToGame(c.gameID, responseJSON)
-		c.hub.logger.Infof("[PLAYER_READY] Broadcasted player_ready status to all clients in game %s", c.gameID)
 
-		// After player ready status changes, broadcast updated active players list
+		// OPTIMIZATION: Use BroadcastToGameWithPriority with HIGH priority
+		c.hub.BroadcastToGameWithPriority(c.gameID, responseJSON, PriorityHigh)
+		c.hub.logger.Infof("[PLAYER_READY] Broadcasted player_ready status to all clients in game %s with HIGH priority", c.gameID)
+
+		// OPTIMIZATION: Reduce delay before sending active_players update
 		go func() {
-			// Give a short delay to ensure the player_ready message is processed first
-			time.Sleep(100 * time.Millisecond)
+			// Reduced delay to improve responsiveness
+			time.Sleep(50 * time.Millisecond)
 			c.hub.logger.Infof("[PLAYER_READY] Sending active_players update after player_ready change for player %s", playerId)
 			c.handleGetActivePlayers()
 		}()
